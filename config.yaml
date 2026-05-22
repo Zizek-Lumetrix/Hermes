@@ -1,0 +1,20 @@
+obsidian:
+  vault_path: ~/Documents/ObsidianVault
+  brief_folder: Intel Briefs
+
+sources:
+  rss:
+    - url: https://example.com/feed.xml
+      name: Example
+
+llm:
+  api_key: ${DEEPSEEK_API_KEY}
+  base_url: https://api.deepseek.com
+  model: deepseek-chat
+
+domains:
+  - AI编程工具
+  - 大模型安全
+
+notify:
+  slack_webhook: null
