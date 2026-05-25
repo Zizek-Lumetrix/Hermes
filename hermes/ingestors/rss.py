@@ -43,6 +43,8 @@ def fetch_feed(url: str, name: str) -> list[RawItem]:
         item_id = hashlib.sha256(link.encode()).hexdigest() if link else ""
 
         published = entry.get("published", entry.get("updated", None))
+        if published is not None and not isinstance(published, str):
+            published = str(published)
 
         items.append(RawItem(
             id=item_id,
