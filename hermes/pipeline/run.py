@@ -62,7 +62,7 @@ def run(config_path: str | None = None) -> None:
     deduped = dedup_items(all_items, existing_urls)
     for item in deduped:
         db.update_item(item.id, simhash=item.simhash, cluster_id=item.cluster_id)
-    new_items = [i for i in deduped if i.id not in existing_urls]
+    new_items = deduped
     elapsed = int((time.monotonic() - t0) * 1000)
     db.log_run(run_id, "dedup", "ok", len(new_items), elapsed)
 
