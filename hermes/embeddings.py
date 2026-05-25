@@ -18,21 +18,23 @@ class EmbeddingIndex:
 
         md_files = list(vault.rglob("*.md"))
         texts = []
-        self.paths = []
+        paths = []
 
         for f in md_files:
             try:
                 content = f.read_text()
                 if content.strip():
                     texts.append(content[:2000])
-                    self.paths.append(str(f.relative_to(vault)))
+                    paths.append(str(f.relative_to(vault)))
             except Exception:
                 continue
 
         if texts:
             self.embeddings = self.model.encode(texts)
+            self.paths = paths
         else:
             self.embeddings = None
+            self.paths = []
 
     def query(self, text: str, top_k: int = 3) -> list[tuple[str, float]]:
         if self.embeddings is None or len(self.paths) == 0:
