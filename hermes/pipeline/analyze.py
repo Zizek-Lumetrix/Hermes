@@ -42,7 +42,11 @@ def analyze_items(
             raw = response.choices[0].message.content.strip()
             raw = re.sub(r"```\w*\n?|```", "", raw)
             parsed = json.loads(raw)
-        except (json.JSONDecodeError, Exception):
+            required = {"title_cn", "summary", "key_points", "implications", "confidence"}
+            if not all(k in parsed for k in required):
+                item["status"] = "skipped"
+                continue
+        except Exception:
             item["status"] = "skipped"
             continue
 

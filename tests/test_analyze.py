@@ -61,3 +61,29 @@ def test_analyze_items_handles_error_gracefully():
     result = analyze_items(items, ["AI"], mock_client)
     assert len(result) == 1
     assert result[0]["status"] == "skipped"
+
+
+def test_analyze_items_handles_malformed_json():
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [
+        MagicMock(message=MagicMock(content="not valid json at all"))
+    ]
+    mock_client.chat.completions.create.return_value = mock_response
+
+    items = [{"id": "x", "title": "T", "content": "C", "source": "S", "relevance_score": 5}]
+    result = analyze_items(items, ["AI"], mock_client)
+    assert result[0]["status"] == "skipped"
+
+
+def test_analyze_items_handles_missing_fields():
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [
+        MagicMock(message=MagicMock(content=json.dumps({"wrong_key": "value"})))
+    ]
+    mock_client.chat.completions.create.return_value = mock_response
+
+    items = [{"id": "x", "title": "T", "content": "C", "source": "S", "relevance_score": 5}]
+    result = analyze_items(items, ["AI"], mock_client)
+    assert result[0]["status"] == "skipped"
