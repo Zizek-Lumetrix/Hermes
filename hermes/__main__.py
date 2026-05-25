@@ -8,10 +8,10 @@ def main():
     args = parser.parse_args()
 
     if args.command == "run":
-        from hermes.pipeline import run
+        from hermes.pipeline.run import run
         run()
     elif args.command == "status":
-        from hermes.pipeline import status
+        from hermes.pipeline.run import status
         status()
     else:
         parser.print_help()
