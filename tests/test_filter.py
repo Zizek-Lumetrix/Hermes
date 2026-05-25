@@ -12,9 +12,10 @@ def test_build_filter_prompt_includes_domains():
 
 
 def test_build_filter_prompt_with_feedback():
-    feedback = [{"item_id": "x", "rating": 1}, {"item_id": "y", "rating": 5}]
+    feedback = [{"brief_date": "2026-05-20", "rating": 1}, {"brief_date": "2026-05-21", "rating": 5}]
     prompt = build_filter_prompt(["AI"], feedback_notes=feedback)
     assert "用户偏好" in prompt
+    assert "2026-05-20" in prompt
 
 
 def test_filter_items_calls_api():
@@ -84,4 +85,6 @@ def test_filter_items_handles_malformed_json():
 
     items = [{"id": "x", "title": "T", "content": "C", "cluster_id": "c1", "source": "S"}]
     result = filter_items(items, ["AI"], [], mock_client)
-    assert len(result) >= 0
+    assert result[0]["relevance_score"] == 0
+    assert result[0]["relevance_reason"] == "parse error"
+    assert result[0]["status"] == "skipped"

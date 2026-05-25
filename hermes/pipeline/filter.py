@@ -20,9 +20,11 @@ def build_filter_prompt(domains: list[str], feedback_notes: list[dict]) -> str:
         if low_rated or high_rated:
             prompt += "\n\n用户偏好参考："
             if low_rated:
-                prompt += f"\n- 用户对类似以下内容打过低分: {low_rated[:3]}"
+                low_dates = [f.get("brief_date", "") for f in low_rated[:3]]
+                prompt += f"\n- 用户对以下日期的简报打过低分: {low_dates}"
             if high_rated:
-                prompt += f"\n- 用户对类似以下内容打过高分: {high_rated[:3]}"
+                high_dates = [f.get("brief_date", "") for f in high_rated[:3]]
+                prompt += f"\n- 用户对以下日期的简报打过高分: {high_dates}"
 
     return prompt
 
