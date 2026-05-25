@@ -22,7 +22,7 @@ def test_similar_texts_have_small_hamming_distance():
         "Breaking news: scientists discover new exoplanet in habitable zone "
         "of nearby star system, NASA confirmed. The planet is approximately Earth-sized."
     )
-    assert hamming_distance(a, b) <= 10
+    assert hamming_distance(a, b) <= 9
 
 
 def test_different_texts_have_large_hamming_distance():
