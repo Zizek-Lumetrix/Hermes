@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS run_log (
 """
 
 
+_ALLOWED_COLUMNS = {
+    "source", "title", "url", "content", "published_at",
+    "simhash", "cluster_id", "relevance_score", "relevance_reason",
+    "analysis", "linked_notes", "status",
+}
+
+
 class Database:
     def __init__(self, path: str):
         self.conn = sqlite3.connect(path)
@@ -58,6 +65,9 @@ class Database:
     def update_item(self, id: str, **kwargs: Any) -> None:
         if not kwargs:
             return
+        for k in kwargs:
+            if k not in _ALLOWED_COLUMNS:
+                raise ValueError(f"Invalid column: {k}")
         sets = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values()) + [id]
         self.conn.execute(f"UPDATE items SET {sets} WHERE id = ?", values)
