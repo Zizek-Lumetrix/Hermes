@@ -127,7 +127,9 @@ def run(config_path: str | None = None) -> None:
             except (json.JSONDecodeError, TypeError):
                 query_text = item.get("title", "")
             related = index.query(query_text)
-            item["linked_notes"] = json.dumps([r[0] for r in related])
+            linked = json.dumps([r[0] for r in related])
+            item["linked_notes"] = linked
+            db.update_item(item["id"], linked_notes=linked)
 
     # Fetch full items from DB for writer
     write_items = []
