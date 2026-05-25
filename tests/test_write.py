@@ -121,4 +121,5 @@ rating: 2
         )
 
         feedback = scan_feedback(str(tmpdir), "Briefs")
-        assert len(feedback) >= 1
+        assert len(feedback) == 1
+        assert feedback[0]["rating"] == 2

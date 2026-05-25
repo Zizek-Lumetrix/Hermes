@@ -1,6 +1,5 @@
 import json
-import os
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import frontmatter
@@ -36,7 +35,7 @@ def write_brief(items: list[dict], vault_path: str, brief_folder: str) -> str:
 
     high_items = [i for i in items if i.get("relevance_score", 0) >= 7]
     mid_items = [i for i in items if 4 <= i.get("relevance_score", 0) <= 6]
-    low_items = [i for i in items if 3 <= i.get("relevance_score", 0) <= 3]
+    low_items = [i for i in items if i.get("relevance_score", 0) <= 3]
 
     lines = [
         "---",
