@@ -9,16 +9,15 @@ def _tokenize(text: str) -> list[str]:
 
 def compute_simhash(text: str, bits: int = 64) -> str:
     tokens = _tokenize(text)
-    vector = [0.0] * bits
+    vector = [0] * bits
 
-    for idx, token in enumerate(tokens):
+    for token in tokens:
         h = int(hashlib.md5(token.encode()).hexdigest(), 16)
-        weight = 1.0 / ((idx + 1) ** 2)
         for i in range(bits):
             if h & (1 << i):
-                vector[i] += weight
+                vector[i] += 1
             else:
-                vector[i] -= weight
+                vector[i] -= 1
 
     fingerprint = 0
     for i in range(bits):
@@ -36,6 +35,8 @@ def hamming_distance(a: str, b: str) -> int:
 
 
 def dedup_items(items: list[RawItem], existing_urls: set[str]) -> list[RawItem]:
+    items = [item for item in items if item.url not in existing_urls]
+
     for item in items:
         prefix = item.content[:500] if item.content else item.title
         item.simhash = compute_simhash(prefix)
