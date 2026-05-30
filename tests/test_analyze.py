@@ -1,89 +1,101 @@
 import json
 from unittest.mock import MagicMock
-from hermes.pipeline.analyze import analyze_items, build_analyze_prompt
+from hermes.pipeline.analyze import analyze_items
 
 
-def test_build_analyze_prompt():
-    prompt = build_analyze_prompt(["AI安全"])
-    assert "批判性分析" in prompt
-    assert "偏见" in prompt
-    assert "confidence" in prompt
-
-
-def test_analyze_items_calls_api_and_parses_response():
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(
-            message=MagicMock(
-                content=json.dumps({
-                    "title_cn": "GPT-5安全漏洞分析",
-                    "summary": "研究人员发现GPT-5存在提示注入漏洞，攻击者可绕过安全限制。"
-                              "但该研究仅在实验室环境验证，尚未在实际部署中复现。",
-                    "key_points": ["提示注入漏洞", "实验室环境验证", "实际影响待确认"],
-                    "implications": "AI应用开发者需关注提示注入防御机制，但不需立即恐慌",
-                    "confidence": "medium",
-                })
-            )
-        )
-    ]
-    mock_client.chat.completions.create.return_value = mock_response
-
+def test_analyze_two_calls():
     items = [
         {
-            "id": "abc",
-            "title": "GPT-5 Security Analysis",
-            "content": "Full article content here.",
-            "source": "AI Security Blog",
-            "relevance_score": 8,
-        }
+            "id": "abc123",
+            "title": "New AI Safety Framework Released",
+            "content": "NIST published a comprehensive AI safety framework with guidelines.",
+            "source": "NIST",
+        },
     ]
+
+    mock_client = MagicMock()
+    call1 = MagicMock()
+    call1.choices = [MagicMock(message=MagicMock(content=json.dumps({
+        "title_cn": "NIST发布AI安全框架",
+        "summary": "NIST发布了综合性AI安全框架。",
+        "key_points": ["框架涵盖风险评估", "包括实施指南"],
+        "implications": "从业者应关注合规要求",
+        "confidence": "high",
+    })))]
+    call2 = MagicMock()
+    call2.choices = [MagicMock(message=MagicMock(content=json.dumps({
+        "entities": [
+            {"name": "NIST", "type": "ORG", "mention_positions": [0]},
+            {"name": "AI Safety Framework", "type": "CONCEPT", "mention_positions": [1]},
+        ],
+        "prediction": None,
+    })))]
+    mock_client.chat.completions.create.side_effect = [call1, call2]
 
     result = analyze_items(items, ["AI安全"], mock_client)
-
     assert len(result) == 1
-    assert result[0]["analysis"] is not None
-    analysis = json.loads(result[0]["analysis"])
-    assert analysis["confidence"] == "medium"
-    assert "GPT-5" in analysis["title_cn"]
-    assert len(analysis["key_points"]) == 3
     assert result[0]["status"] == "analyzed"
+    analysis = json.loads(result[0]["analysis"])
+    assert analysis["title_cn"] == "NIST发布AI安全框架"
+    entities = json.loads(result[0]["entities"])
+    assert len(entities) == 2
+    assert result[0]["prediction"] is None
 
 
-def test_analyze_items_handles_error_gracefully():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.side_effect = Exception("API error")
-
+def test_analyze_extracts_prediction():
     items = [
-        {"id": "x", "title": "T", "content": "C", "source": "S", "relevance_score": 5}
+        {
+            "id": "def456",
+            "title": "OpenAI CEO says GPT-5 by end of year",
+            "content": "Sam Altman stated that GPT-5 will be released by December 2026.",
+            "source": "TechCrunch",
+        },
     ]
+
+    mock_client = MagicMock()
+    call1 = MagicMock()
+    call1.choices = [MagicMock(message=MagicMock(content=json.dumps({
+        "title_cn": "OpenAI CEO称GPT-5年底发布",
+        "summary": "Sam Altman表示GPT-5将在2026年12月前发布。",
+        "key_points": ["时间线承诺", "可能影响竞争格局"],
+        "implications": "关注实际发布时间",
+        "confidence": "medium",
+    })))]
+    call2 = MagicMock()
+    call2.choices = [MagicMock(message=MagicMock(content=json.dumps({
+        "entities": [{"name": "Sam Altman", "type": "PERSON", "mention_positions": [0]}],
+        "prediction": {
+            "statement": "GPT-5 will release by December 2026",
+            "deadline": "2026-12-31",
+            "outcome_var": "GPT-5 public release announcement",
+        },
+    })))]
+    mock_client.chat.completions.create.side_effect = [call1, call2]
 
     result = analyze_items(items, ["AI"], mock_client)
     assert len(result) == 1
-    assert result[0]["status"] == "skipped"
+    pred = json.loads(result[0]["prediction"])
+    assert pred is not None
+    assert pred["statement"] == "GPT-5 will release by December 2026"
 
 
-def test_analyze_items_handles_malformed_json():
+def test_analyze_parse_failure_skips_item():
+    items = [{"id": "bad", "title": "Test", "content": "Content", "source": "Test"}]
     mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(message=MagicMock(content="not valid json at all"))
-    ]
-    mock_client.chat.completions.create.return_value = mock_response
+    bad = MagicMock()
+    bad.choices = [MagicMock(message=MagicMock(content="not valid json {{{{{"))]
+    mock_client.chat.completions.create.return_value = bad
 
-    items = [{"id": "x", "title": "T", "content": "C", "source": "S", "relevance_score": 5}]
     result = analyze_items(items, ["AI"], mock_client)
-    assert result[0]["status"] == "skipped"
+    assert len(result) == 0
 
 
-def test_analyze_items_handles_missing_fields():
+def test_analyze_missing_required_fields_skips():
+    items = [{"id": "partial", "title": "Test", "content": "Content", "source": "Test"}]
     mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(message=MagicMock(content=json.dumps({"wrong_key": "value"})))
-    ]
-    mock_client.chat.completions.create.return_value = mock_response
+    resp = MagicMock()
+    resp.choices = [MagicMock(message=MagicMock(content='{"title_cn": "Only title"}'))]
+    mock_client.chat.completions.create.return_value = resp
 
-    items = [{"id": "x", "title": "T", "content": "C", "source": "S", "relevance_score": 5}]
     result = analyze_items(items, ["AI"], mock_client)
-    assert result[0]["status"] == "skipped"
+    assert len(result) == 0

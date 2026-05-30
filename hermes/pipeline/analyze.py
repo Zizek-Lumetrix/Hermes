@@ -2,11 +2,11 @@ import json
 import re
 
 
-def build_analyze_prompt(domains: list[str]) -> str:
+def _build_critique_prompt(domains: list[str]) -> str:
     domain_list = "、".join(domains)
     return f"""你是一个情报分析专家，关注领域：{domain_list}。
 
-请对以下内容进行批判性分析。注意：
+请对以下内容进行批判性分析：
 - 识别信源偏见和未被验证的断言
 - 与其他已知信息的矛盾之处
 - 区分事实陈述与观点推断
@@ -21,36 +21,74 @@ def build_analyze_prompt(domains: list[str]) -> str:
 }}"""
 
 
+def _build_extraction_prompt() -> str:
+    return """请从以下内容中提取结构化信息。
+
+输出严格 JSON 格式（不含代码块标记）：
+{{
+    "entities": [{{"name": "<实体名>", "type": "PERSON|ORG|CONCEPT|PRODUCT|EVENT|LOCATION", "mention_positions": [0, 1]}}],
+    "prediction": {{"statement": "<可验证的预测>", "deadline": "YYYY-MM-DD", "outcome_var": "<可观测的结果变量>"}} 或 null
+}}
+
+要求：
+- entities 只提取原文明确提及的实体，不要推断
+- prediction 只提取有明确时间线和可验证结果的预测，否则为 null
+- deadline 必须是具体的日期或可推断的日期"""
+
+
 def analyze_items(
     items: list[dict],
     domains: list[str],
     client,
 ) -> list[dict]:
-    prompt_template = build_analyze_prompt(domains)
+    critique_prompt = _build_critique_prompt(domains)
+    extraction_prompt = _build_extraction_prompt()
 
+    results = []
     for item in items:
-        content = f"标题：{item['title']}\n来源：{item['source']}\n内容：{item['content'][:3000]}"
-        user_msg = f"{prompt_template}\n\n{content}"
+        title = item.get("title", "")
+        content = item.get("content", "")[:3000]
+        source = item.get("source", "")
+        item_text = f"标题：{title}\n来源：{source}\n内容：{content}"
 
+        # Call 1: Critical analysis (t=0.3)
         try:
             response = client.chat.completions.create(
                 model="deepseek-chat",
-                messages=[{"role": "user", "content": user_msg}],
+                messages=[{"role": "user", "content": f"{critique_prompt}\n\n{item_text}"}],
                 temperature=0.3,
                 max_tokens=800,
             )
             raw = response.choices[0].message.content.strip()
             raw = re.sub(r"```\w*\n?|```", "", raw)
-            parsed = json.loads(raw)
+            analysis = json.loads(raw)
             required = {"title_cn", "summary", "key_points", "implications", "confidence"}
-            if not all(k in parsed for k in required):
-                item["status"] = "skipped"
+            if not all(k in analysis for k in required):
                 continue
         except Exception:
-            item["status"] = "skipped"
             continue
 
-        item["analysis"] = json.dumps(parsed, ensure_ascii=False)
-        item["status"] = "analyzed"
+        # Call 2: Structure extraction (t=0.1)
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": f"{extraction_prompt}\n\n{item_text}"}],
+                temperature=0.1,
+                max_tokens=400,
+            )
+            raw = response.choices[0].message.content.strip()
+            raw = re.sub(r"```\w*\n?|```", "", raw)
+            extracted = json.loads(raw)
+            entities = extracted.get("entities", [])
+            prediction = extracted.get("prediction")
+        except Exception:
+            entities = []
+            prediction = None
 
-    return items
+        item["analysis"] = json.dumps(analysis, ensure_ascii=False)
+        item["entities"] = json.dumps(entities, ensure_ascii=False)
+        item["prediction"] = json.dumps(prediction, ensure_ascii=False) if prediction else None
+        item["status"] = "analyzed"
+        results.append(item)
+
+    return results
