@@ -1,66 +1,114 @@
-import sqlite3
+import json
+import uuid
+from pathlib import Path
 from typing import Any
 
-
-CREATE_TABLES = """
-CREATE TABLE IF NOT EXISTS items (
-    id TEXT PRIMARY KEY,
-    source TEXT,
-    title TEXT,
-    url TEXT,
-    content TEXT,
-    published_at TEXT,
-    simhash TEXT,
-    cluster_id TEXT,
-    relevance_score INTEGER,
-    relevance_reason TEXT,
-    analysis TEXT,
-    linked_notes TEXT,
-    status TEXT DEFAULT 'new',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS feedback (
-    item_id TEXT PRIMARY KEY,
-    rating INTEGER,
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS run_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT,
-    stage TEXT,
-    status TEXT,
-    item_count INTEGER,
-    duration_ms INTEGER,
-    error TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-"""
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from pgvector.psycopg2 import register_vector
 
 
-_ALLOWED_COLUMNS = {
+_ALLOWED_COLUMNS = frozenset({
     "source", "title", "url", "content", "published_at",
-    "simhash", "cluster_id", "relevance_score", "relevance_reason",
-    "analysis", "linked_notes", "status",
-}
+    "fingerprint", "cluster_id", "embedding", "implicit_cluster",
+    "analysis", "entities", "prediction", "exploit_score", "status",
+})
+
+_VECTOR_COLUMNS = frozenset({"embedding"})
+_JSONB_COLUMNS = frozenset({"analysis", "entities", "prediction"})
+
+
+def _find_migrations_dir() -> Path:
+    """Locate the migrations directory relative to this package."""
+    return Path(__file__).resolve().parent.parent / "migrations"
 
 
 class Database:
-    def __init__(self, path: str):
-        self.conn = sqlite3.connect(path)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(CREATE_TABLES)
+    """PostgreSQL-backed database for Hermes v2.
+
+    Uses psycopg2 directly with pgvector support.
+    On init, runs any pending SQL migrations from the ``migrations/`` directory.
+    """
+
+    def __init__(self, dsn: str):
+        self.conn = psycopg2.connect(dsn)
+        self.conn.autocommit = False
+        register_vector(self.conn)
+        self._run_migrations()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _run_migrations(self) -> None:
+        """Execute all pending migration ``.sql`` files in sorted order."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS _migrations (
+                    name TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
         self.conn.commit()
 
-    def insert_item(self, id: str, source: str, title: str, url: str,
-                    content: str, published_at: str | None) -> None:
-        self.conn.execute(
-            "INSERT OR IGNORE INTO items (id, source, title, url, content, published_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+        migrations_dir = _find_migrations_dir()
+        if not migrations_dir.exists():
+            return
+
+        applied = {r["name"] for r in self._query("SELECT name FROM _migrations")}
+        for f in sorted(migrations_dir.glob("*.sql")):
+            if f.name not in applied:
+                sql = f.read_text()
+                try:
+                    with self.conn.cursor() as cur:
+                        cur.execute(sql)
+                    self.conn.commit()
+                    self.execute(
+                        "INSERT INTO _migrations (name) VALUES (%s)", (f.name,)
+                    )
+                except Exception:
+                    self.conn.rollback()
+                    raise
+
+    def _query(self, sql: str, params: tuple | None = None) -> list[dict]:
+        """Execute a SELECT and return results as a list of dicts."""
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return [dict(r) for r in cur.fetchall()]
+
+    def execute(self, sql: str, params: tuple | None = None) -> None:
+        """Execute a mutation statement (does not commit)."""
+        with self.conn.cursor() as cur:
+            cur.execute(sql, params)
+
+    def _commit(self) -> None:
+        """Commit and restore clean state on error."""
+        try:
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    # ------------------------------------------------------------------
+    # Items
+    # ------------------------------------------------------------------
+
+    def insert_item(
+        self,
+        id: str,
+        source: str,
+        title: str,
+        url: str,
+        content: str,
+        published_at: str | None = None,
+    ) -> None:
+        self.execute(
+            "INSERT INTO items (id, source, title, url, content, published_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (id) DO NOTHING",
             (id, source, title, url, content, published_at),
         )
-        self.conn.commit()
+        self._commit()
 
     def update_item(self, id: str, **kwargs: Any) -> None:
         if not kwargs:
@@ -68,54 +116,214 @@ class Database:
         for k in kwargs:
             if k not in _ALLOWED_COLUMNS:
                 raise ValueError(f"Invalid column: {k}")
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values()) + [id]
-        self.conn.execute(f"UPDATE items SET {sets} WHERE id = ?", values)
-        self.conn.commit()
 
-    def get_items_by_status(self, status: str) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT * FROM items WHERE status = ? ORDER BY created_at", (status,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        set_clauses: list[str] = []
+        values: list[Any] = []
+        for k, v in kwargs.items():
+            if k in _VECTOR_COLUMNS:
+                set_clauses.append(f"{k} = %s::vector")
+                values.append(v)
+            elif k in _JSONB_COLUMNS:
+                set_clauses.append(f"{k} = %s::jsonb")
+                values.append(json.dumps(v) if isinstance(v, (dict, list)) else v)
+            else:
+                set_clauses.append(f"{k} = %s")
+                values.append(v)
+        values.append(id)
 
-    def get_item_count_by_cluster(self, cluster_id: str) -> int:
-        row = self.conn.execute(
-            "SELECT COUNT(*) as cnt FROM items WHERE cluster_id = ? AND status != 'skipped'",
-            (cluster_id,),
-        ).fetchone()
-        return row["cnt"] if row else 0
+        self.execute(
+            f"UPDATE items SET {', '.join(set_clauses)} WHERE id = %s",
+            tuple(values),
+        )
+        self._commit()
 
-    def log_run(self, run_id: str, stage: str, status: str,
-                item_count: int, duration_ms: int, error: str | None = None) -> None:
-        self.conn.execute(
+    def get_items_by_status(self, status: str, limit: int = 1000) -> list[dict]:
+        return self._query(
+            "SELECT * FROM items WHERE status = %s ORDER BY created_at LIMIT %s",
+            (status, limit),
+        )
+
+    def get_existing_urls(self) -> set[str]:
+        rows = self._query("SELECT url FROM items")
+        return {r["url"] for r in rows}
+
+    def get_items_for_enrich(self, limit: int = 500) -> list[dict]:
+        return self._query(
+            "SELECT * FROM items WHERE status = 'new' ORDER BY created_at LIMIT %s",
+            (limit,),
+        )
+
+    # ------------------------------------------------------------------
+    # Run Log
+    # ------------------------------------------------------------------
+
+    def log_run(
+        self,
+        run_id: str,
+        stage: str,
+        status: str,
+        item_count: int = 0,
+        duration_ms: int = 0,
+        error: str | None = None,
+    ) -> None:
+        self.execute(
             "INSERT INTO run_log (run_id, stage, status, item_count, duration_ms, error) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             (run_id, stage, status, item_count, duration_ms, error),
         )
-        self.conn.commit()
+        self._commit()
 
     def get_run_logs(self, run_id: str) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT * FROM run_log WHERE run_id = ? ORDER BY id", (run_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return self._query(
+            "SELECT * FROM run_log WHERE run_id = %s ORDER BY id",
+            (run_id,),
+        )
 
     def get_last_successful_run(self) -> str | None:
-        row = self.conn.execute(
-            "SELECT run_id FROM run_log WHERE stage = 'write' AND status = 'ok' "
+        rows = self._query(
+            "SELECT run_id FROM run_log WHERE stage = 'backtest' AND status = 'ok' "
             "ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        return row["run_id"] if row else None
-
-    def insert_feedback(self, item_id: str, rating: int) -> None:
-        self.conn.execute(
-            "INSERT OR REPLACE INTO feedback (item_id, rating, updated_at) "
-            "VALUES (?, ?, datetime('now'))",
-            (item_id, rating),
         )
-        self.conn.commit()
+        return rows[0]["run_id"] if rows else None
 
-    def get_all_feedback(self) -> list[dict]:
-        rows = self.conn.execute("SELECT * FROM feedback").fetchall()
-        return [dict(r) for r in rows]
+    # ------------------------------------------------------------------
+    # Conclusions
+    # ------------------------------------------------------------------
+
+    def upsert_conclusion(
+        self,
+        id: str,
+        statement: str,
+        domain: str,
+        confidence: float,
+        embedding: list[float],
+        change_description: str | None = None,
+        triggered_by: Any = None,
+    ) -> None:
+        existing = self.get_conclusion(id)
+        if existing:
+            if (
+                existing["statement"] != statement
+                or existing["confidence"] != confidence
+            ):
+                versions = self.get_conclusion_versions(id)
+                new_version = (versions[-1]["version"] + 1) if versions else 1
+                self.execute(
+                    "INSERT INTO conclusion_versions "
+                    "(conclusion_id, version, statement, confidence, "
+                    "change_description, triggered_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
+                    (
+                        id,
+                        new_version,
+                        statement,
+                        confidence,
+                        change_description,
+                        json.dumps(triggered_by) if triggered_by else None,
+                    ),
+                )
+                self.execute(
+                    "UPDATE conclusions SET statement = %s, domain = %s, "
+                    "confidence = %s, embedding = %s::vector WHERE id = %s",
+                    (statement, domain, confidence, embedding, id),
+                )
+        else:
+            self.execute(
+                "INSERT INTO conclusions "
+                "(id, statement, domain, confidence, embedding) "
+                "VALUES (%s, %s, %s, %s, %s::vector)",
+                (id, statement, domain, confidence, embedding),
+            )
+            self.execute(
+                "INSERT INTO conclusion_versions "
+                "(conclusion_id, version, statement, confidence, "
+                "change_description, triggered_by) "
+                "VALUES (%s, 1, %s, %s, %s, %s::jsonb)",
+                (
+                    id,
+                    statement,
+                    confidence,
+                    change_description,
+                    json.dumps(triggered_by) if triggered_by else None,
+                ),
+            )
+        self._commit()
+
+    def get_conclusion(self, id: str) -> dict | None:
+        rows = self._query(
+            "SELECT * FROM conclusions WHERE id = %s", (id,)
+        )
+        return rows[0] if rows else None
+
+    def get_conclusion_versions(self, conclusion_id: str) -> list[dict]:
+        return self._query(
+            "SELECT * FROM conclusion_versions "
+            "WHERE conclusion_id = %s ORDER BY version",
+            (conclusion_id,),
+        )
+
+    def get_all_conclusions(self, status: str = "active") -> list[dict]:
+        return self._query(
+            "SELECT * FROM conclusions WHERE status = %s ORDER BY created_at DESC",
+            (status,),
+        )
+
+    def confirm_conclusion(self, id: str, confirmation: str) -> None:
+        if confirmation not in ("confirmed", "challenged"):
+            raise ValueError(
+                f"confirmation must be 'confirmed' or 'challenged', got {confirmation!r}"
+            )
+        self.execute(
+            "UPDATE conclusions SET user_confirmation = %s WHERE id = %s",
+            (confirmation, id),
+        )
+        self._commit()
+
+    # ------------------------------------------------------------------
+    # Predictions
+    # ------------------------------------------------------------------
+
+    def insert_prediction(
+        self,
+        item_id: str,
+        statement: str,
+        deadline: str,
+        outcome_var: str | None = None,
+    ) -> str:
+        pred_id = str(uuid.uuid4())
+        self.execute(
+            "INSERT INTO predictions (id, item_id, statement, deadline, outcome_var) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (pred_id, item_id, statement, deadline, outcome_var),
+        )
+        self._commit()
+        return pred_id
+
+    def get_pending_predictions(self) -> list[dict]:
+        return self._query(
+            "SELECT * FROM predictions "
+            "WHERE backtest_result IS NULL AND deadline <= CURRENT_DATE"
+        )
+
+    def update_prediction_result(
+        self, id: str, result: str, reason: str = ""
+    ) -> None:
+        self.execute(
+            "UPDATE predictions SET backtest_result = %s, backtest_reason = %s, "
+            "backtest_at = now() WHERE id = %s",
+            (result, reason, id),
+        )
+        self._commit()
+
+    def get_all_predictions(self, filter_status: str = "all") -> list[dict]:
+        if filter_status == "pending":
+            return self._query(
+                "SELECT * FROM predictions "
+                "WHERE backtest_result IS NULL ORDER BY deadline"
+            )
+        elif filter_status == "verified":
+            return self._query(
+                "SELECT * FROM predictions "
+                "WHERE backtest_result IS NOT NULL ORDER BY deadline"
+            )
+        return self._query("SELECT * FROM predictions ORDER BY deadline")
