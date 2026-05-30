@@ -1,39 +1,22 @@
-import requests
+# hermes/notify.py — kept for backward compat, delegates to health module
+from typing import Optional
+from hermes.health import send_health_check, format_health_email
 
 
 def format_summary(logs: list[dict]) -> str:
     lines = ["Hermes Run Summary", "=" * 20]
     total_ms = 0
-    errors = []
-
     for log in logs:
-        stage = log["stage"]
-        status = log["status"].upper() if log["status"] == "error" else log["status"]
+        stage = log.get("stage", "?")
+        status = log.get("status", "?")
         count = log.get("item_count", 0)
         ms = log.get("duration_ms", 0)
         total_ms += ms
-
-        line = f"  {stage}: {status} | {count} items | {ms/1000:.1f}s"
-        lines.append(line)
-
-        if log.get("error"):
-            errors.append(f"  [{stage}] {log['error']}")
-
+        lines.append(f"  {stage}: {status} | {count} items | {ms/1000:.1f}s")
     lines.append("-" * 20)
     lines.append(f"  Total: {total_ms/1000:.1f}s")
-
-    if errors:
-        lines.append("")
-        lines.append("ERRORS:")
-        lines.extend(errors)
-
     return "\n".join(lines)
 
 
-def send_slack(webhook_url: str, text: str) -> None:
-    if not webhook_url:
-        return
-    try:
-        requests.post(webhook_url, json={"text": text}, timeout=10)
-    except Exception:
-        pass
+def send_slack(webhook_url: Optional[str], text: str) -> None:
+    pass  # Slack notification removed in v2
