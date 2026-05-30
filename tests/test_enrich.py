@@ -53,3 +53,27 @@ def test_centroids_are_normalized():
     centroid = clusterer.centroids[0]
     norm = np.linalg.norm(centroid)
     assert abs(norm - 1.0) < 0.01
+
+
+from hermes.pipeline.enrich import enrich_items
+
+
+def test_enrich_adds_embedding_and_cluster():
+    clusterer = StreamingClusterer(distance_threshold=0.5)
+    items = [
+        {"id": "a", "title": "AI Safety Paper", "content": "Research on AI alignment."},
+        {"id": "b", "title": "Oil Prices Rise", "content": "Crude oil up 5%."},
+    ]
+    result = enrich_items(items, clusterer)
+    assert len(result) == 2
+    for item in result:
+        assert "embedding" in item
+        assert len(item["embedding"]) == 384
+        assert isinstance(item["implicit_cluster"], int)
+        assert item["status"] == "enriched"
+
+
+def test_enrich_handles_empty_list():
+    clusterer = StreamingClusterer()
+    result = enrich_items([], clusterer)
+    assert result == []
