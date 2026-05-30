@@ -21,6 +21,15 @@ def get_db() -> Database:
     return Database(config.db_url)
 
 
+def _db_ok():
+    try:
+        db = get_db()
+        db.get_last_successful_run()
+        return True
+    except Exception:
+        return False
+
+
 app = FastAPI(title="Hermes", version="2.0.0")
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -37,6 +46,8 @@ def index():
 
 @app.get("/api/graph")
 def get_graph():
+    if not _db_ok():
+        return {"nodes": [], "edges": []}
     db = get_db()
     conclusions = db.get_all_conclusions()
     nodes = []
@@ -67,6 +78,8 @@ def get_graph():
 
 @app.get("/api/graph/conclusion/{conclusion_id}")
 def get_conclusion_detail(conclusion_id: str):
+    if not _db_ok():
+        return {"error": "database unavailable"}, 503
     db = get_db()
     conclusion = db.get_conclusion(conclusion_id)
     if not conclusion:
@@ -90,6 +103,8 @@ def get_stream(
     type: str = Query("all"),
     limit: int = Query(50, le=100),
 ):
+    if not _db_ok():
+        return {"entries": []}
     db = get_db()
     rows = db._query(
         "SELECT run_id, stage, status, item_count, duration_ms, error, created_at "
@@ -110,12 +125,16 @@ def get_stream(
 
 @app.get("/api/predictions")
 def get_predictions(status: str = Query("all")):
+    if not _db_ok():
+        return []
     db = get_db()
     return db.get_all_predictions(filter_status=status)
 
 
 @app.get("/api/runs")
 def get_runs():
+    if not _db_ok():
+        return []
     db = get_db()
     rows = db._query("SELECT * FROM run_log ORDER BY created_at DESC LIMIT 100")
     return rows
