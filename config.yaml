@@ -1,11 +1,48 @@
 obsidian:
-  vault_path: ~/Documents/ObsidianVault
+  vault_path: ~/Documents/Obsidian Vault
   brief_folder: Intel Briefs
 
 sources:
   rss:
-    - url: https://example.com/feed.xml
-      name: Example
+    - url: https://news.ycombinator.com/rss
+      name: Hacker News
+      enabled: false
+    - url: https://simonwillison.net/atom/everything/
+      name: Simon Willison
+      enabled: false
+    - url: https://rss.arxiv.org/rss/cs.AI
+      name: ArXiv cs.AI
+      enabled: false
+    - url: https://rss.arxiv.org/rss/cs.CR
+      name: ArXiv cs.CR
+      enabled: false
+    - url: https://www.jiqizhixin.com/rss
+      name: 机器之心
+      enabled: false
+    - url: https://www.qbitai.com/feed
+      name: 量子位
+      enabled: false
+    - url: https://techcrunch.com/feed/
+      name: TechCrunch
+      enabled: false
+    - url: https://feeds.bbci.co.uk/news/rss.xml
+      name: BBC News
+      enabled: true
+    - url: https://www.theguardian.com/world/rss
+      name: The Guardian
+      enabled: false
+    - url: https://www.aljazeera.com/xml/rss/middle-east.xml
+      name: Al Jazeera Middle East
+      enabled: true
+    - url: https://oilprice.com/rss
+      name: OilPrice
+      enabled: false
+    - url: https://www.hellenicshippingnews.com/feed/
+      name: Hellenic Shipping News
+      enabled: true
+    - url: https://www.offshore-energy.biz/feed/
+      name: Offshore Energy
+      enabled: true
 
 llm:
   api_key: ${DEEPSEEK_API_KEY}
@@ -15,6 +52,23 @@ llm:
 domains:
   - AI编程工具
   - 大模型安全
+  - 中东局势
+  - 能源安全
+  - 地缘政治
+
+database:
+  url: postgresql://localhost:5432/hermes
+
+email:
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  from_addr: hermes@example.com
+  to_addr: user@example.com
+  password: ${HERMES_EMAIL_PASSWORD}
+
+scoring:
+  exploit_threshold: 5
+  cluster_distance: 0.5
 
 notify:
   slack_webhook: null
