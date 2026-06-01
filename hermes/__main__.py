@@ -19,6 +19,10 @@ def main():
     audit_parser = sub.add_parser("audit", help="Audit LLM analysis quality")
     audit_parser.add_argument("-n", type=int, default=5, help="Number of items to audit (default: 5)")
 
+    pt_parser = sub.add_parser("test-prompts", help="Run prompt regression tests against fixtures")
+    pt_parser.add_argument("-n", type=int, default=None, help="Number of fixtures to test (default: all)")
+    pt_parser.add_argument("--threshold", type=int, default=4, help="Pass threshold 0-5 (default: 4)")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -60,6 +64,18 @@ def main():
         config = load_config(config_path)
         db = Database(config.db_url)
         run_audit(db, n=args.n)
+    elif args.command == "test-prompts":
+        import os
+        from openai import OpenAI
+        from hermes.config import load_config
+        from hermes.pipeline.test_prompts import run_prompt_tests, format_prompt_test_report
+
+        config_path = args.config or os.path.expanduser("~/.hermes/config.yaml")
+        config = load_config(config_path)
+        client = OpenAI(api_key=config.llm_api_key, base_url=config.llm_base_url)
+        report = run_prompt_tests(client, config.domains,
+                                  limit=args.n, threshold=args.threshold)
+        print(format_prompt_test_report(report))
     else:
         parser.print_help()
 

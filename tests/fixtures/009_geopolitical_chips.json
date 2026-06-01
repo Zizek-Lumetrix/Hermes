@@ -1,0 +1,11 @@
+{
+  "title": "TSMC Arizona Fab Reaches 3nm Production Milestone, Shifting Global Semiconductor Balance",
+  "content": "TSMC's Arizona fabrication facility has successfully begun volume production of 3nm chips, marking the first time cutting-edge semiconductor manufacturing occurs on U.S. soil. The facility currently produces 20,000 wafers per month with plans to double capacity by 2027. This development significantly reduces reliance on Taiwan-based fabs, where 92% of advanced chips are currently manufactured. The U.S. CHIPS Act provided $6.6 billion in subsidies for the project. Industry analysts note that while this is a meaningful diversification, the Arizona fab still represents only 4% of TSMC's advanced capacity. Taiwan's government has expressed concern about the strategic implications, calling the technology transfer a 'national security consideration.' China's state media described the milestone as 'weaponization of supply chains.'",
+  "source": "Nikkei Asia",
+  "expected": {
+    "relevant": true,
+    "domain": "地缘政治",
+    "confidence": "high",
+    "exploit_score": 9
+  }
+}

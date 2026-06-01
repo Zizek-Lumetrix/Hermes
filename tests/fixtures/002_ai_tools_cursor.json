@@ -1,0 +1,11 @@
+{
+  "title": "Cursor Launches AI-Native IDE with Built-in Model Fine-tuning",
+  "content": "Cursor announced their new AI-native IDE that includes built-in model fine-tuning capabilities. Developers can now fine-tune code generation models on their organization's private repositories directly from the editor. The IDE tracks which suggestions are accepted or rejected and uses this feedback to personalize future completions. A new 'agent mode' allows the AI to autonomously refactor entire modules while maintaining test compatibility. The company also released benchmarks showing 40% fewer bugs in AI-generated code compared to generic models.",
+  "source": "The Verge",
+  "expected": {
+    "relevant": true,
+    "domain": "AI编程工具",
+    "confidence": "high",
+    "exploit_score": 7
+  }
+}

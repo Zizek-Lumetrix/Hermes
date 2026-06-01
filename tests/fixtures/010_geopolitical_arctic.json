@@ -1,0 +1,11 @@
+{
+  "title": "Russia and China Conduct Joint Naval Exercises in Arctic Shipping Route",
+  "content": "Russian and Chinese naval forces have concluded joint exercises along the Northern Sea Route, a 5,600 km Arctic shipping corridor that is becoming increasingly viable due to climate change. The exercises included 12 vessels and anti-submarine warfare drills. The route reduces shipping time between Shanghai and Rotterdam by 10 days compared to the Suez Canal route. Russia has invested heavily in icebreaker fleets and port infrastructure along the route, while China's Polar Silk Road initiative has funded satellite monitoring stations in the region. NATO has expressed concern about military dual-use of civilian shipping infrastructure. The U.S. currently operates only two icebreakers compared to Russia's fleet of 40. Arctic shipping traffic has increased 400% since 2020.",
+  "source": "BBC News",
+  "expected": {
+    "relevant": true,
+    "domain": "地缘政治",
+    "confidence": "high",
+    "exploit_score": 8
+  }
+}

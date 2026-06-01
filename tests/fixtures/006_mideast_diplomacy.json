@@ -1,0 +1,11 @@
+{
+  "title": "Saudi-Israel Normalization Talks Resume After Six-Month Freeze",
+  "content": "Diplomatic sources confirm that back-channel negotiations between Saudi Arabia and Israel have quietly resumed after a six-month pause following the Gaza conflict escalation. The talks are reportedly mediated by Oman and focus on limited economic cooperation and overflight rights as initial confidence-building measures. Both sides have publicly denied the talks. The Biden administration has encouraged the process but is not directly participating. Key sticking points remain Palestinian statehood recognition and Saudi civilian nuclear program ambitions. Regional experts suggest progress on overflight rights could materialize within 3-6 months based on the pace of previous rounds.",
+  "source": "Al Jazeera",
+  "expected": {
+    "relevant": true,
+    "domain": "中东局势",
+    "confidence": "medium",
+    "exploit_score": 6
+  }
+}

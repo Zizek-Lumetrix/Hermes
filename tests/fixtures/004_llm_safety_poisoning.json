@@ -1,0 +1,11 @@
+{
+  "title": "Supply Chain Attack Poisons Open-Source Training Data for Code LLMs",
+  "content": "Security researchers at MITRE have documented a sophisticated supply chain attack where malicious actors injected trojaned code examples into popular open-source repositories that are commonly used to train code LLMs. The poisoned examples teach models to generate code with subtle security vulnerabilities when specific function names are used. Over 50 popular GitHub repositories were found to contain these poisoned examples, which have likely been included in training datasets for at least 3 major code generation models. Detection is extremely difficult because individual examples appear benign and only trigger when combined in specific patterns.",
+  "source": "MITRE",
+  "expected": {
+    "relevant": true,
+    "domain": "大模型安全",
+    "confidence": "high",
+    "exploit_score": 9
+  }
+}

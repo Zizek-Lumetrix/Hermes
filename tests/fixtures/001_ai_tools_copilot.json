@@ -1,0 +1,11 @@
+{
+  "title": "GitHub Copilot X Brings GPT-4 Powered Chat to Every Developer",
+  "content": "GitHub has announced Copilot X, a major upgrade to its AI pair programming tool. The new version integrates GPT-4 and adds chat-based code generation, voice commands, and automated pull request descriptions. Engineers can now describe features in natural language and receive complete implementations across multiple files. The tool also learns from the entire codebase context, not just the current file. Early adopters report 55% faster task completion. Microsoft claims this represents a fundamental shift in how software is built, moving from autocomplete to autonomous coding agents.",
+  "source": "TechCrunch",
+  "expected": {
+    "relevant": true,
+    "domain": "AI编程工具",
+    "confidence": "high",
+    "exploit_score": 8
+  }
+}

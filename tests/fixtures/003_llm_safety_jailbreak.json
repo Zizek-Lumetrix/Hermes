@@ -1,0 +1,11 @@
+{
+  "title": "Researchers Discover Universal Jailbreak Method Affecting All Major LLMs",
+  "content": "A joint research team from CMU and the Center for AI Safety has discovered a universal jailbreak technique that bypasses safety guardrails in GPT-4, Claude, Gemini, and Llama models. The method uses adversarial suffix generation to append seemingly random tokens to prompts, causing models to ignore safety constraints with 84% success rate. The researchers disclosed findings to all affected companies before publication. All major vendors have acknowledged the vulnerability but none have released complete fixes. The technique exploits fundamental limitations in current alignment methods and may require architectural changes to fully address.",
+  "source": "ArXiv cs.CR",
+  "expected": {
+    "relevant": true,
+    "domain": "大模型安全",
+    "confidence": "high",
+    "exploit_score": 9
+  }
+}

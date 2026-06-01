@@ -1,0 +1,11 @@
+{
+  "title": "Iran-Backed Forces Intensify Attacks on Commercial Shipping in Strait of Hormuz",
+  "content": "Commercial shipping through the Strait of Hormuz faces escalating threats as Iran-backed forces have conducted at least 12 attacks on vessels in the past month. Insurance premiums for tanker transit have risen 300% since the attacks began. The U.S. Navy has increased patrol presence but has not directly engaged attacking forces, citing escalation concerns. Shipping companies are increasingly considering the longer Cape of Good Hope route, which adds 10 days and $1M in fuel costs per voyage. Oil prices have risen 8% in response. Regional analysts warn that a single successful attack on a major oil tanker could trigger a broader military confrontation.",
+  "source": "Reuters",
+  "expected": {
+    "relevant": true,
+    "domain": "中东局势",
+    "confidence": "high",
+    "exploit_score": 8
+  }
+}

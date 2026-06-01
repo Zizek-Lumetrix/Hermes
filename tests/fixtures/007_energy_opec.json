@@ -1,0 +1,11 @@
+{
+  "title": "OPEC+ Considers Deeper Production Cuts as Global Demand Weakens",
+  "content": "OPEC+ members are discussing additional production cuts of up to 1 million barrels per day at their upcoming ministerial meeting, according to delegates familiar with the negotiations. The move comes as Chinese oil demand growth slows below expectations and European industrial output contracts for the fourth consecutive quarter. Saudi Arabia is reportedly pushing for deeper cuts while smaller African producers resist, citing budget pressures. Brent crude has fallen to $72/bbl from $89/bbl three months ago. Analysts at Goldman Sachs project that without additional cuts, the market will face a 500,000 bpd surplus in H2 2026, potentially pushing prices below $65.",
+  "source": "Financial Times",
+  "expected": {
+    "relevant": true,
+    "domain": "能源安全",
+    "confidence": "high",
+    "exploit_score": 8
+  }
+}

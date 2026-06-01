@@ -1,0 +1,11 @@
+{
+  "title": "China's Solar Panel Exports Hit Record Despite Global Trade Barriers",
+  "content": "Chinese solar panel exports reached an all-time high of 280 GW in 2025, up 35% year-over-year, despite new tariffs imposed by the U.S., EU, and India. Panel prices have fallen below $0.08/watt, making Chinese panels cheaper than domestic alternatives even after tariffs in most markets. Southeast Asian assembly hubs in Vietnam and Malaysia now handle 40% of exports to bypass origin restrictions. The IEA warns that this price dynamic is creating permanent dependency on Chinese supply chains for renewable energy infrastructure. Several European solar manufacturers have filed for bankruptcy, citing inability to compete even with subsidy support. Grid-scale solar installations are now the cheapest form of new electricity generation in 90% of global markets.",
+  "source": "Bloomberg",
+  "expected": {
+    "relevant": true,
+    "domain": "能源安全",
+    "confidence": "high",
+    "exploit_score": 7
+  }
+}
