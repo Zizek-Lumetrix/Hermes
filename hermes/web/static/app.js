@@ -12,14 +12,43 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+// -- Toast --
+function showToast(msg, type) {
+  const el = document.getElementById('confirm-toast');
+  el.textContent = msg;
+  el.className = type + ' show';
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => { el.className = ''; }, 2500);
+}
+
 // -- Knowledge Graph --
 let graphLoaded = false;
+let graphLoading = false;
+let graphSimulation = null;
+let graphNodeData = null;
+let graphSvg = null;
+
+function updateGraphNodeStyles() {
+  if (!graphSvg || !graphNodeData) return;
+  graphSvg.selectAll('circle.nodes')
+    .attr('stroke', d => {
+      if (d.user_confirmation === 'confirmed') return '#4caf50';
+      if (d.user_confirmation === 'challenged') return '#f44336';
+      return 'none';
+    })
+    .attr('stroke-width', d => d.user_confirmation ? 3 : 0);
+}
+
 function loadGraph() {
-  if (graphLoaded) return;
+  if (graphLoaded || graphLoading) return;
+  graphLoading = true;
 
   const container = document.getElementById('graph-container');
   const width = container.clientWidth;
   const height = container.clientHeight || 400;
+
+  // Clear any previous SVG (in case of re-render)
+  container.innerHTML = '';
 
   const svg = d3.select('#graph-container')
     .append('svg')
@@ -41,19 +70,37 @@ function loadGraph() {
         svg.append('text').attr('x', width/2).attr('y', height/2)
           .attr('text-anchor', 'middle').attr('fill', '#888')
           .text('No conclusions yet. Run the pipeline to build your knowledge graph.');
+        graphLoaded = true;
+        graphLoading = false;
         return;
       }
 
       graphLoaded = true;
+      graphLoading = false;
+      graphNodeData = data.nodes;
+      graphSvg = svg;
 
-      const sameDomain = data.edges.filter(e => e.type === 'same_domain').length;
-      const crossDomain = data.edges.filter(e => e.type === 'cross_domain').length;
+      // Pre-resolve links: replace string source/target with node objects
+      // so D3 forceLink never needs to look up IDs
+      const nodeById = {};
+      data.nodes.forEach(n => { nodeById[n.id] = n; });
+      const resolvedEdges = data.edges.map(e => ({
+        ...e,
+        source: nodeById[e.source] || e.source,
+        target: nodeById[e.target] || e.target,
+      }));
+      const validEdges = resolvedEdges.filter(e =>
+        typeof e.source === 'object' && typeof e.target === 'object'
+      );
+
+      const sameEdges = validEdges.filter(e => e.type === 'same_domain');
+      const crossEdges = validEdges.filter(e => e.type === 'cross_domain');
+
+      const sameDomain = sameEdges.length;
+      const crossDomain = crossEdges.length;
       svg.append('text').attr('x', 10).attr('y', 18)
         .attr('fill', '#888').attr('font-size', 12)
         .text(data.nodes.length + ' nodes | same-domain: ' + sameDomain + ' | cross-domain: ' + crossDomain + (crossDomain === 0 ? ' (try lower threshold)' : ''));
-
-      const sameEdges = data.edges.filter(e => e.type === 'same_domain');
-      const crossEdges = data.edges.filter(e => e.type === 'cross_domain');
 
       const sameLink = g.selectAll('line.same')
         .data(sameEdges)
@@ -109,8 +156,20 @@ function loadGraph() {
         node.attr('cx', d => d.x).attr('cy', d => d.y);
         labels.attr('x', d => d.x).attr('y', d => d.y);
       });
-      simulation.force('link', d3.forceLink(data.edges).distance(80));
+      simulation.force('link', d3.forceLink(validEdges).distance(80));
       simulation.alpha(1).restart();
+      graphSimulation = simulation;
+      updateGraphNodeStyles();
+    })
+    .catch((err) => {
+      console.error('Graph load error:', err);
+      svg.append('text').attr('x', width/2).attr('y', height/2)
+        .attr('text-anchor', 'middle').attr('fill', '#f44336')
+        .text('数据库连接失败，请检查数据库是否运行');
+      svg.append('text').attr('x', width/2).attr('y', height/2 + 24)
+        .attr('text-anchor', 'middle').attr('fill', '#888').attr('font-size', 12)
+        .text(err.message || '');
+      graphLoading = false;
     });
 }
 
@@ -232,9 +291,13 @@ function renderEvidence(conclusionData) {
   const medCount = itemConfs.filter(x => x === 'medium').length;
   const lowCount = itemConfs.filter(x => x === 'low').length;
 
+  const confirmStatus = c.user_confirmation;
+  const confirmLabel = confirmStatus === 'confirmed' ? '已确认 ✓' : confirmStatus === 'challenged' ? '已质疑 ✗' : '未标记';
+  const confirmBadgeClass = confirmStatus === 'confirmed' ? 'confirmed' : confirmStatus === 'challenged' ? 'challenged' : 'unmarked';
+
   let html = `
     <h3 style="margin-bottom:4px;">${c.statement}</h3>
-    <p class="meta">领域: ${c.domain || '未知'} | 状态: ${c.status}</p>
+    <p class="meta">领域: ${c.domain || '未知'} | 状态: ${c.status} <span class="confirmation-badge ${confirmBadgeClass}">${confirmLabel}</span></p>
     <div style="margin:8px 0;padding:8px 12px;background:#222;border-radius:6px;border-left:4px solid ${confColor};">
       <span style="font-size:24px;font-weight:bold;color:${confColor};">${confPct}%</span>
       <span style="color:#888;font-size:13px;margin-left:8px;">
@@ -242,8 +305,7 @@ function renderEvidence(conclusionData) {
         ${highCount ? highCount + '篇高可靠 ' : ''}${medCount ? medCount + '篇中等 ' : ''}${lowCount ? lowCount + '篇低可靠' : ''}
       </span>
     </div>
-    <p class="meta">确认: ${c.user_confirmation || '未标记'}</p>
-  `;
+`;
 
   if (conclusionData.counter_evidence) {
     html += `<div style="margin:8px 0;padding:8px 12px;background:#2a1a1a;border-radius:6px;border-left:4px solid #f44336;">
@@ -329,9 +391,11 @@ function renderEvidence(conclusionData) {
     });
   }
 
-  html += `<div style="margin-top:20px;display:flex;gap:8px;">
-    <button class="confirm-btn" onclick="confirmConclusion('${c.id}', 'confirmed')">确认 ✓</button>
-    <button class="confirm-btn challenge" onclick="confirmConclusion('${c.id}', 'challenged')">质疑 ✗</button>
+  const isConfirmed = confirmStatus === 'confirmed';
+  const isChallenged = confirmStatus === 'challenged';
+  html += `<div style="margin-top:20px;display:flex;gap:8px;" id="confirm-buttons">
+    <button class="confirm-btn${isConfirmed ? ' confirmed-active' : ''}" id="btn-confirm" onclick="confirmConclusion('${c.id}', 'confirmed')">${isConfirmed ? '✓ 已确认' : '确认 ✓'}</button>
+    <button class="confirm-btn challenge${isChallenged ? ' challenged-active' : ''}" id="btn-challenge" onclick="confirmConclusion('${c.id}', 'challenged')">${isChallenged ? '✗ 已质疑' : '质疑 ✗'}</button>
   </div>`;
 
   return html;
@@ -354,9 +418,38 @@ function openDrawer(nodeId) {
 }
 
 function confirmConclusion(id, value) {
+  const btnConfirm = document.getElementById('btn-confirm');
+  const btnChallenge = document.getElementById('btn-challenge');
+  const clickedBtn = value === 'confirmed' ? btnConfirm : btnChallenge;
+  const label = value === 'confirmed' ? '确认' : '质疑';
+
+  if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.textContent = value === 'confirmed' ? '保存中...' : btnConfirm.textContent; }
+  if (btnChallenge) { btnChallenge.disabled = true; btnChallenge.textContent = value === 'challenged' ? '保存中...' : btnChallenge.textContent; }
+
   fetch(`/api/graph/conclusion/${id}/confirm?value=${value}`, { method: 'POST' })
-    .then(r => r.json())
-    .then(() => openDrawer(id));
+    .then(r => {
+      if (!r.ok) throw new Error('API error ' + r.status);
+      return r.json();
+    })
+    .then(data => {
+      if (data.status === 'ok') {
+        // Update graph node data and re-style
+        if (graphNodeData) {
+          const node = graphNodeData.find(n => n.id === id);
+          if (node) node.user_confirmation = value;
+        }
+        updateGraphNodeStyles();
+        showToast(label + '已保存', 'success');
+        openDrawer(id);
+      } else {
+        showToast('保存失败: ' + (data.error || 'unknown'), 'error');
+        openDrawer(id);
+      }
+    })
+    .catch(err => {
+      showToast('网络错误，请重试', 'error');
+      openDrawer(id);
+    });
 }
 
 document.getElementById('drawer-close').addEventListener('click', () => {

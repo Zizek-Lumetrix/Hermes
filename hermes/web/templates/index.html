@@ -30,9 +30,21 @@ header h1 { font-size: 18px; font-weight: 600; }
 #drawer { position: fixed; right: 0; top: 0; width: 520px; max-width: 100vw; height: 100vh; background: #1a1a1a; border-left: 1px solid #2a2a2a; padding: 24px; overflow-y: auto; display: none; z-index: 100; }
 #drawer.open { display: block; }
 #drawer-close { background: none; border: none; color: #e0e0e0; font-size: 20px; cursor: pointer; float: right; }
-.confirm-btn { padding: 6px 16px; margin: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #e0e0e0; border-radius: 4px; cursor: pointer; }
+.confirm-btn { padding: 6px 16px; margin: 4px; border: 1px solid #4a4a4a; background: #2a2a2a; color: #e0e0e0; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
 .confirm-btn.challenge { border-color: #f44336; }
-.confirm-btn:hover { border-color: #4caf50; }
+.confirm-btn:hover:not(:disabled) { border-color: #4caf50; }
+.confirm-btn.challenge:hover:not(:disabled) { border-color: #ff6f6f; background: #2a1a1a; }
+.confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.confirm-btn.confirmed-active { border-color: #4caf50; background: #1a3a1a; color: #4caf50; }
+.confirm-btn.challenged-active { border-color: #f44336; background: #2a1a1a; color: #f44336; }
+.confirmation-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; margin-left: 8px; }
+.confirmation-badge.confirmed { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+.confirmation-badge.challenged { background: #2a1a1a; color: #f44336; border: 1px solid #f44336; }
+.confirmation-badge.unmarked { background: #222; color: #888; border: 1px solid #444; }
+#confirm-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 10px 24px; border-radius: 8px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+#confirm-toast.show { opacity: 1; }
+#confirm-toast.success { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+#confirm-toast.error { background: #2a1a1a; color: #f44336; border: 1px solid #f44336; }
 .meta { color: #888; font-size: 13px; margin: 2px 0; }
 .version-line { font-size: 12px; padding: 3px 0; color: #aaa; border-bottom: 1px solid #222; }
 .evidence-card { background: #222; border-radius: 6px; padding: 14px; margin: 10px 0; border-left: 3px solid #4a4a4a; }
@@ -87,6 +99,8 @@ line.cross_domain { stroke: #ff9800; stroke-opacity: 0.7; }
   <button id="drawer-close">&times;</button>
   <div id="drawer-content"></div>
 </div>
+
+<div id="confirm-toast"></div>
 
 <script src="/static/app.js"></script>
 </body>
