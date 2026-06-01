@@ -128,7 +128,8 @@ def get_conclusion_detail(conclusion_id: str):
         domain_rows = db._query(
             "SELECT id, title, url, source, analysis, entities, exploit_score, "
             "published_at FROM items WHERE status IN ('assessed', 'incorporated') "
-            "ORDER BY exploit_score DESC LIMIT 30"
+            "AND domain = %s ORDER BY exploit_score DESC LIMIT 30",
+            (conclusion["domain"],),
         )
         for r in domain_rows:
             if r["id"] not in seen_ids:
