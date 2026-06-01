@@ -16,7 +16,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 let graphLoaded = false;
 function loadGraph() {
   if (graphLoaded) return;
-  graphLoaded = true;
 
   const container = document.getElementById('graph-container');
   const width = container.clientWidth;
@@ -45,11 +44,35 @@ function loadGraph() {
         return;
       }
 
-      const link = g.selectAll('.links')
-        .data(data.edges)
+      graphLoaded = true;
+
+      const sameDomain = data.edges.filter(e => e.type === 'same_domain').length;
+      const crossDomain = data.edges.filter(e => e.type === 'cross_domain').length;
+      svg.append('text').attr('x', 10).attr('y', 18)
+        .attr('fill', '#888').attr('font-size', 12)
+        .text(data.nodes.length + ' nodes | same-domain: ' + sameDomain + ' | cross-domain: ' + crossDomain + (crossDomain === 0 ? ' (try lower threshold)' : ''));
+
+      const sameEdges = data.edges.filter(e => e.type === 'same_domain');
+      const crossEdges = data.edges.filter(e => e.type === 'cross_domain');
+
+      const sameLink = g.selectAll('line.same')
+        .data(sameEdges)
         .join('line')
-        .attr('class', 'links')
-        .attr('stroke-width', 1);
+        .attr('class', 'links same')
+        .attr('stroke', '#4a4a4a')
+        .attr('stroke-width', 1.2)
+        .attr('opacity', 0.6);
+      sameLink.append('title').text('同领域');
+
+      const crossLink = g.selectAll('line.cross')
+        .data(crossEdges)
+        .join('line')
+        .attr('class', 'links cross')
+        .attr('stroke', '#ff9800')
+        .attr('stroke-width', 2.5)
+        .attr('stroke-dasharray', '8,4')
+        .attr('opacity', 0.9);
+      crossLink.append('title').text(d => '语义关联 ' + (d.strength * 100).toFixed(0) + '%');
 
       const color = d3.scaleOrdinal()
         .domain(['AI编程工具', '大模型安全', '中东局势', '能源安全', '地缘政治'])
@@ -78,8 +101,10 @@ function loadGraph() {
         .attr('dx', 12)
         .attr('dy', 4);
 
+      const allLinks = g.selectAll('line.links');
+
       simulation.nodes(data.nodes).on('tick', () => {
-        link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        allLinks.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
             .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
         node.attr('cx', d => d.x).attr('cy', d => d.y);
         labels.attr('x', d => d.x).attr('y', d => d.y);
@@ -275,6 +300,30 @@ function renderEvidence(conclusionData) {
       if (entities.length) {
         const entLabels = entities.map(e => `${e.name} (${e.type})`).join(', ');
         html += `<div class="analysis-section"><strong>实体:</strong> ${entLabels}</div>`;
+      }
+      html += `</div>`;
+    });
+  }
+
+  const relatedItems = conclusionData.related_items || [];
+  html += `<h4 style="margin-top:20px;border-top:1px solid #333;padding-top:12px;">同领域相关文章 (${relatedItems.length})</h4>`;
+
+  if (relatedItems.length === 0) {
+    html += `<p class="meta">暂无同领域相关文章</p>`;
+  } else {
+    relatedItems.forEach((item, idx) => {
+      const analysis = safeJson(item.analysis) || {};
+      html += `<div class="evidence-card" style="opacity:0.8;">`;
+      html += `<div class="evidence-header">`;
+      html += `<strong>${idx + 1}. ${analysis.title_cn || item.title}</strong>`;
+      html += ` <span class="source-tag">${item.source}</span>`;
+      html += ` <span class="source-tag" style="margin-left:4px;background:#2a1a1a;color:#ff9800;">${item.domain || ''}</span>`;
+      html += `</div>`;
+      if (item.url) {
+        html += `<div><a href="${item.url}" target="_blank" class="source-url">查看原文</a></div>`;
+      }
+      if (analysis.summary) {
+        html += `<div class="analysis-section">${analysis.summary.slice(0, 150)}</div>`;
       }
       html += `</div>`;
     });

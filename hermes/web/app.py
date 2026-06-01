@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from functools import lru_cache
 
 from fastapi import FastAPI, Query
@@ -15,10 +16,15 @@ def get_config():
     return load_config(config_path)
 
 
-@lru_cache()
+_db: Database | None = None
+
+
 def get_db() -> Database:
-    config = get_config()
-    return Database(config.db_url)
+    global _db
+    if _db is None:
+        config = get_config()
+        _db = Database(config.db_url)
+    return _db
 
 
 def _db_ok():
@@ -27,6 +33,8 @@ def _db_ok():
         db.get_last_successful_run()
         return True
     except Exception:
+        global _db
+        _db = None
         return False
 
 
@@ -44,13 +52,24 @@ def index():
         return f.read()
 
 
+def _cosine_sim(a, b):
+    va = np.array(a, dtype=np.float32)
+    vb = np.array(b, dtype=np.float32)
+    na = np.linalg.norm(va)
+    nb = np.linalg.norm(vb)
+    if na == 0 or nb == 0:
+        return 0.0
+    return float(np.dot(va, vb) / (na * nb))
+
+
 @app.get("/api/graph")
-def get_graph():
+def get_graph(cross_domain_threshold: float = 0.4):
     if not _db_ok():
         return {"nodes": [], "edges": []}
     db = get_db()
     conclusions = db.get_all_conclusions()
     nodes = []
+    emb_map: dict[str, list[float]] = {}
     for c in conclusions:
         versions = db.get_conclusion_versions(c["id"])
         nodes.append({
@@ -64,14 +83,32 @@ def get_graph():
             "version_count": len(versions),
             "created_at": str(c.get("created_at", "")),
         })
+        emb = c.get("embedding")
+        if emb is not None:
+            emb_map[c["id"]] = emb
 
     edges = []
     for i, n1 in enumerate(nodes):
         for j, n2 in enumerate(nodes):
             if i >= j:
                 continue
-            if n1.get("domain") and n2.get("domain") and n1["domain"] == n2["domain"]:
-                edges.append({"source": n1["id"], "target": n2["id"], "type": "same_domain"})
+            same_domain = (
+                n1.get("domain") and n2.get("domain")
+                and n1["domain"] == n2["domain"]
+            )
+            if same_domain:
+                edges.append({
+                    "source": n1["id"], "target": n2["id"],
+                    "type": "same_domain",
+                })
+            elif n1["id"] in emb_map and n2["id"] in emb_map:
+                sim = _cosine_sim(emb_map[n1["id"]], emb_map[n2["id"]])
+                if sim >= cross_domain_threshold:
+                    edges.append({
+                        "source": n1["id"], "target": n2["id"],
+                        "type": "cross_domain",
+                        "strength": round(sim, 2),
+                    })
 
     return {"nodes": nodes, "edges": edges}
 
