@@ -37,7 +37,7 @@ def density_peak_cluster(
         for j in range(i + 1, n):
             emb_i = items[i].get("embedding")
             emb_j = items[j].get("embedding")
-            if emb_i and emb_j:
+            if emb_i is not None and emb_j is not None:
                 d = 1.0 - _cosine_similarity(emb_i, emb_j)
                 distances[i][j] = d
                 distances[j][i] = d
@@ -85,7 +85,7 @@ def match_conclusion(
 
     for existing in existing_conclusions:
         emb = existing.get("embedding")
-        if not emb:
+        if emb is None:
             continue
         sim = _cosine_similarity(candidate_embedding, emb)
         if sim > best_sim:

@@ -45,9 +45,8 @@ function loadGraph() {
 
   const container = document.getElementById('graph-container');
   const width = container.clientWidth;
-  const height = container.clientHeight || 400;
+  const height = container.clientHeight || 600;
 
-  // Clear any previous SVG (in case of re-render)
   container.innerHTML = '';
 
   const svg = d3.select('#graph-container')
@@ -56,12 +55,11 @@ function loadGraph() {
     .attr('height', height);
 
   const g = svg.append('g');
-  svg.call(d3.zoom().on('zoom', (e) => g.attr('transform', e.transform)));
+  svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', (e) => g.attr('transform', e.transform)));
 
-  const simulation = d3.forceSimulation()
-    .force('charge', d3.forceManyBody().strength(-100))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide(30));
+  const color = d3.scaleOrdinal()
+    .domain(['AI编程工具', '大模型安全', '网络安全', '科技产业', '中东局势', '能源安全', '气候环境', '经济金融', '地缘政治'])
+    .range(['#4caf50', '#2196f3', '#00bcd4', '#e91e63', '#f44336', '#ff9800', '#8bc34a', '#ffc107', '#9c27b0']);
 
   fetch('/api/graph')
     .then(r => r.json())
@@ -80,8 +78,7 @@ function loadGraph() {
       graphNodeData = data.nodes;
       graphSvg = svg;
 
-      // Pre-resolve links: replace string source/target with node objects
-      // so D3 forceLink never needs to look up IDs
+      // Pre-resolve edge node references
       const nodeById = {};
       data.nodes.forEach(n => { nodeById[n.id] = n; });
       const resolvedEdges = data.edges.map(e => ({
@@ -93,44 +90,57 @@ function loadGraph() {
         typeof e.source === 'object' && typeof e.target === 'object'
       );
 
-      const sameEdges = validEdges.filter(e => e.type === 'same_domain');
-      const crossEdges = validEdges.filter(e => e.type === 'cross_domain');
+      // Build domain → center position map for grouping forces
+      const domains = data.domains || [];
+      const domainCenters = {};
+      const margin = 140;
+      const usableW = width - margin * 2;
+      const usableH = height - margin * 2;
+      const cols = Math.ceil(Math.sqrt(domains.length));
+      const rows = Math.ceil(domains.length / cols);
+      domains.forEach((d, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        domainCenters[d] = {
+          x: margin + usableW * (col + 0.5) / cols,
+          y: margin + usableH * (row + 0.5) / rows,
+        };
+      });
 
-      const sameDomain = sameEdges.length;
-      const crossDomain = crossEdges.length;
+      // Add legend
+      const legendHtml = domains.map(d =>
+        `<div class="legend-item"><span class="legend-swatch" style="background:${color(d)};"></span>${d}</div>`
+      ).join('');
+      const legendDiv = document.createElement('div');
+      legendDiv.id = 'graph-legend';
+      legendDiv.innerHTML = legendHtml;
+      container.appendChild(legendDiv);
+
+      // Info text
       svg.append('text').attr('x', 10).attr('y', 18)
         .attr('fill', '#888').attr('font-size', 12)
-        .text(data.nodes.length + ' nodes | same-domain: ' + sameDomain + ' | cross-domain: ' + crossDomain + (crossDomain === 0 ? ' (try lower threshold)' : ''));
+        .text(data.nodes.length + ' conclusions, ' + validEdges.length + ' cross-domain links');
 
-      const sameLink = g.selectAll('line.same')
-        .data(sameEdges)
-        .join('line')
-        .attr('class', 'links same')
-        .attr('stroke', '#4a4a4a')
-        .attr('stroke-width', 1.2)
-        .attr('opacity', 0.6);
-      sameLink.append('title').text('同领域');
-
+      // Cross-domain edges only
       const crossLink = g.selectAll('line.cross')
-        .data(crossEdges)
+        .data(validEdges)
         .join('line')
         .attr('class', 'links cross')
         .attr('stroke', '#ff9800')
-        .attr('stroke-width', 2.5)
-        .attr('stroke-dasharray', '8,4')
-        .attr('opacity', 0.9);
+        .attr('stroke-width', d => 1 + d.strength * 3)
+        .attr('stroke-dasharray', '6,3')
+        .attr('opacity', 0.5);
       crossLink.append('title').text(d => '语义关联 ' + (d.strength * 100).toFixed(0) + '%');
-
-      const color = d3.scaleOrdinal()
-        .domain(['AI编程工具', '大模型安全', '网络安全', '科技产业', '中东局势', '能源安全', '气候环境', '经济金融', '地缘政治'])
-        .range(['#4caf50', '#2196f3', '#00bcd4', '#e91e63', '#f44336', '#ff9800', '#8bc34a', '#ffc107', '#9c27b0']);
 
       const node = g.selectAll('.nodes')
         .data(data.nodes)
         .join('circle')
         .attr('class', 'nodes')
-        .attr('r', d => 6 + (d.confidence || 0.5) * 10)
+        .attr('r', d => 8 + (d.confidence || 0.5) * 12)
         .attr('fill', d => color(d.domain || 'other'))
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 0.5)
+        .attr('opacity', 0.9)
         .call(d3.drag()
           .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
           .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
@@ -143,20 +153,31 @@ function loadGraph() {
         .data(data.nodes)
         .join('text')
         .attr('class', 'node-label')
-        .text(d => d.label.length > 30 ? d.label.slice(0, 28) + '...' : d.label)
-        .attr('font-size', 10)
-        .attr('dx', 12)
+        .text(d => d.label.length > 35 ? d.label.slice(0, 33) + '...' : d.label)
+        .attr('font-size', 11)
+        .attr('dx', 14)
         .attr('dy', 4);
 
-      const allLinks = g.selectAll('line.links');
+      const simulation = d3.forceSimulation(data.nodes)
+        .force('charge', d3.forceManyBody().strength(-500))
+        .force('collision', d3.forceCollide(d => 16 + (d.confidence || 0.5) * 14))
+        .force('link', d3.forceLink(validEdges).distance(120).strength(0.3))
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+        .force('x', d3.forceX(d => {
+          const c = domainCenters[d.domain];
+          return c ? c.x : width / 2;
+        }).strength(0.15))
+        .force('y', d3.forceY(d => {
+          const c = domainCenters[d.domain];
+          return c ? c.y : height / 2;
+        }).strength(0.15))
+        .on('tick', () => {
+          crossLink.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+              .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+          node.attr('cx', d => d.x).attr('cy', d => d.y);
+          labels.attr('x', d => d.x).attr('y', d => d.y);
+        });
 
-      simulation.nodes(data.nodes).on('tick', () => {
-        allLinks.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-        node.attr('cx', d => d.x).attr('cy', d => d.y);
-        labels.attr('x', d => d.x).attr('y', d => d.y);
-      });
-      simulation.force('link', d3.forceLink(validEdges).distance(80));
       simulation.alpha(1).restart();
       graphSimulation = simulation;
       updateGraphNodeStyles();

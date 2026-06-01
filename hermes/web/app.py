@@ -87,30 +87,24 @@ def get_graph(cross_domain_threshold: float = 0.4):
         if emb is not None:
             emb_map[c["id"]] = emb
 
+    domains_seen = sorted({n["domain"] for n in nodes if n.get("domain")})
+
     edges = []
     for i, n1 in enumerate(nodes):
         for j, n2 in enumerate(nodes):
             if i >= j:
                 continue
-            same_domain = (
-                n1.get("domain") and n2.get("domain")
-                and n1["domain"] == n2["domain"]
-            )
-            if same_domain:
+            if n1["id"] not in emb_map or n2["id"] not in emb_map:
+                continue
+            sim = _cosine_sim(emb_map[n1["id"]], emb_map[n2["id"]])
+            if sim >= cross_domain_threshold:
                 edges.append({
                     "source": n1["id"], "target": n2["id"],
-                    "type": "same_domain",
+                    "type": "cross_domain",
+                    "strength": round(sim, 2),
                 })
-            elif n1["id"] in emb_map and n2["id"] in emb_map:
-                sim = _cosine_sim(emb_map[n1["id"]], emb_map[n2["id"]])
-                if sim >= cross_domain_threshold:
-                    edges.append({
-                        "source": n1["id"], "target": n2["id"],
-                        "type": "cross_domain",
-                        "strength": round(sim, 2),
-                    })
 
-    return {"nodes": nodes, "edges": edges}
+    return {"nodes": nodes, "edges": edges, "domains": domains_seen}
 
 
 def _serialize_row(row, drop_fields=("embedding",)):

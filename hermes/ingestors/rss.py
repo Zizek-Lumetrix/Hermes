@@ -1,5 +1,6 @@
 import hashlib
 import re
+import socket
 from dataclasses import dataclass
 
 import feedparser
@@ -31,7 +32,9 @@ def _clean_html(html: str) -> str:
 
 
 def fetch_feed(url: str, name: str) -> list[RawItem]:
+    socket.setdefaulttimeout(30)
     feed = feedparser.parse(url)
+    socket.setdefaulttimeout(None)
     items = []
     for entry in feed.entries:
         content = entry.get("content", [{}])[0].get("value", "")

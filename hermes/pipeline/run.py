@@ -46,7 +46,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
     elapsed = int((time.monotonic() - t0) * 1000)
     db.log_run(run_id, "ingest", "ok", len(all_items), elapsed, trigger_type=trigger_type)
 
-    if not all_items:
+    if not all_items and not db._query("SELECT 1 FROM items WHERE status = 'assessed' AND embedding IS NOT NULL LIMIT 1"):
         _finish(db, run_id, trigger_type)
         return
 
@@ -76,7 +76,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
     elapsed = int((time.monotonic() - t0) * 1000)
     db.log_run(run_id, "enrich", "ok", len(enriched), elapsed, trigger_type=trigger_type)
 
-    if not enriched:
+    if not enriched and not db._query("SELECT 1 FROM items WHERE status = 'assessed' AND embedding IS NOT NULL LIMIT 1"):
         _finish(db, run_id, trigger_type)
         return
 
@@ -136,6 +136,12 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
     db.log_run(run_id, "assess", "ok", analyzed_count, elapsed, trigger_type=trigger_type)
 
     if not assessed:
+        # No new items assessed this run; process previously assessed items
+        rows = db._query(
+            "SELECT * FROM items WHERE status = 'assessed' AND embedding IS NOT NULL"
+        )
+        assessed = [dict(r) for r in rows]
+    if not assessed:
         _finish(db, run_id, trigger_type)
         return
 
@@ -146,13 +152,13 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
     for c in existing_for_surprise:
         emb = c.get("embedding")
         dom = c.get("domain", "")
-        if emb and dom:
+        if emb is not None and dom:
             domain_conclusions.setdefault(dom, []).append((emb, c.get("confidence", 0.5)))
 
     for item in assessed:
         item_emb = item.get("embedding")
         item_domain = item.get("domain", "")
-        if not item_emb or not item_domain:
+        if item_emb is None or not item_domain:
             item["surprise_score"] = 0.5
             db.update_item(item["id"], surprise_score=0.5)
             continue
@@ -218,7 +224,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
             domain = max(domains_seen, key=domains_seen.get) if domains_seen else config.domains[0]
 
             # Compute embedding as mean of related item embeddings
-            item_embs = [item["embedding"] for item in related_items if item.get("embedding")]
+            item_embs = [item["embedding"] for item in related_items if item.get("embedding") is not None]
             if item_embs:
                 mean_emb = np.mean(np.array(item_embs), axis=0).tolist()
             else:
