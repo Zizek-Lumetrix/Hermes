@@ -4,7 +4,8 @@
 
 {{
   "relevant": true/false,
-  "domain": "{domain_choices}",
+  "domain": "<领域名>",
+  "domain_proposed": "<新领域名或空>",
   "title_cn": "<中文标题>",
   "summary": "<200字批判性摘要，包含信源偏见识别、未验证断言标注、与已知信息的矛盾>",
   "key_points": ["<关键质疑或发现1>", "<要点2>", "<要点3>"],
@@ -17,7 +18,8 @@
 
 要求：
 - relevant: 是否与关注领域相关。不相关则后续字段可省略
-- domain: 必须从 [{domain_choices}] 中精确选择一个，不可自创
+- domain: 从 [{domain_choices}] 中选择最匹配的。如果确实无法匹配任何一个现有领域，则填写最接近的一个，并在 domain_proposed 中提议一个2-4字的新领域名称
+- domain_proposed: 只有当现有领域都不太匹配时，才在此字段提议新领域，否则留空字符串
 - key_points: 必须包含对信源可靠性、逻辑漏洞、数据支撑的质疑
 - entities: 只提取原文明确提及的实体
 - prediction: 只提取有明确时间线和可验证结果的预测，否则 null

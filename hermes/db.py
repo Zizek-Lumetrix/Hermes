@@ -12,7 +12,7 @@ _ALLOWED_COLUMNS = frozenset({
     "source", "title", "url", "content", "published_at",
     "fingerprint", "cluster_id", "embedding", "implicit_cluster",
     "analysis", "entities", "prediction", "exploit_score", "surprise_score",
-    "status", "domain",
+    "status", "domain", "domain_proposed",
 })
 
 _VECTOR_COLUMNS = frozenset({"embedding"})

@@ -112,6 +112,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
             prediction=item.get("prediction"),
             exploit_score=item.get("exploit_score", 0),
             domain=item.get("domain", ""),
+            domain_proposed=item.get("domain_proposed"),
         )
         if item.get("prediction"):
             try:

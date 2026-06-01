@@ -122,8 +122,8 @@ function loadGraph() {
       crossLink.append('title').text(d => '语义关联 ' + (d.strength * 100).toFixed(0) + '%');
 
       const color = d3.scaleOrdinal()
-        .domain(['AI编程工具', '大模型安全', '中东局势', '能源安全', '地缘政治'])
-        .range(['#4caf50', '#2196f3', '#f44336', '#ff9800', '#9c27b0']);
+        .domain(['AI编程工具', '大模型安全', '网络安全', '科技产业', '中东局势', '能源安全', '气候环境', '经济金融', '地缘政治'])
+        .range(['#4caf50', '#2196f3', '#00bcd4', '#e91e63', '#f44336', '#ff9800', '#8bc34a', '#ffc107', '#9c27b0']);
 
       const node = g.selectAll('.nodes')
         .data(data.nodes)
@@ -186,11 +186,13 @@ function loadSurprise() {
       panel.innerHTML = data.map(item => {
         const analysis = safeJson(item.analysis) || {};
         const surprisePct = (item.surprise_score * 100).toFixed(0);
+        const domainBadge = item.domain ? `<span class="source-tag" style="margin-left:4px;background:#2a1a1a;color:#f44336;">${item.domain}</span>` : '';
+        const proposedBadge = item.domain_proposed ? `<span class="source-tag" style="margin-left:4px;background:#332200;color:#ff9800;" title="提议的新领域">提议: ${item.domain_proposed}</span>` : '';
         return `<div class="surprise-card">
           <span class="score">${surprisePct}%</span>
           <strong>${analysis.title_cn || item.title}</strong>
           <span class="source-tag" style="margin-left:8px;">${item.source}</span>
-          <span class="source-tag" style="margin-left:4px;background:#2a1a1a;color:#f44336;">${item.domain || ''}</span>
+          ${domainBadge}${proposedBadge}
           <div class="analysis-section">${(analysis.summary || '').slice(0, 200)}</div>
           ${analysis.key_points && analysis.key_points.length ? `<div class="analysis-section"><strong>关键点:</strong><ul>${analysis.key_points.map(kp => `<li>${kp}</li>`).join('')}</ul></div>` : ''}
           ${analysis.implications ? `<div class="analysis-section"><strong>启示:</strong> ${analysis.implications}</div>` : ''}
@@ -343,6 +345,9 @@ function renderEvidence(conclusionData) {
       html += `<div class="evidence-header">`;
       html += `<strong>${idx + 1}. ${analysis.title_cn || item.title}</strong>`;
       html += ` <span class="source-tag">${item.source}</span>`;
+      if (item.domain_proposed) {
+        html += ` <span class="source-tag" style="background:#332200;color:#ff9800;" title="提议的新领域">提议: ${item.domain_proposed}</span>`;
+      }
       html += `</div>`;
 
       if (item.url) {

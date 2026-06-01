@@ -150,7 +150,7 @@ def get_conclusion_detail(conclusion_id: str):
     seen_ids = set()
     for short_id in item_ids:
         rows = db._query(
-            "SELECT id, title, url, source, analysis, entities, exploit_score, "
+            "SELECT id, title, url, source, domain, domain_proposed, analysis, entities, exploit_score, "
             "published_at FROM items WHERE id LIKE %s || '%%'",
             (short_id,),
         )
@@ -163,7 +163,7 @@ def get_conclusion_detail(conclusion_id: str):
     domain_items = []
     if conclusion.get("domain"):
         domain_rows = db._query(
-            "SELECT id, title, url, source, analysis, entities, exploit_score, "
+            "SELECT id, title, url, source, domain, domain_proposed, analysis, entities, exploit_score, "
             "published_at FROM items WHERE status IN ('assessed', 'incorporated') "
             "AND domain = %s ORDER BY exploit_score DESC LIMIT 30",
             (conclusion["domain"],),
@@ -231,7 +231,7 @@ def get_surprise(limit: int = Query(20, le=50)):
         return []
     db = get_db()
     rows = db._query(
-        "SELECT id, title, source, url, domain, analysis, entities, exploit_score, "
+        "SELECT id, title, source, url, domain, domain_proposed, analysis, entities, exploit_score, "
         "surprise_score, published_at FROM items "
         "WHERE status IN ('assessed', 'incorporated') AND surprise_score > 0.5 "
         "ORDER BY surprise_score DESC LIMIT %s",
@@ -255,6 +255,21 @@ def get_runs():
     db = get_db()
     rows = db._query("SELECT * FROM run_log ORDER BY created_at DESC LIMIT 100")
     return rows
+
+
+@app.get("/api/domains")
+def get_domains():
+    config = get_config()
+    configured = config.domains
+    if not _db_ok():
+        return {"configured": configured, "proposed": []}
+    db = get_db()
+    rows = db._query(
+        "SELECT DISTINCT domain, domain_proposed FROM items "
+        "WHERE domain IS NOT NULL AND domain != '' AND domain_proposed IS NOT NULL AND domain_proposed != ''"
+    )
+    proposed = [{"matched": r["domain"], "proposed": r["domain_proposed"]} for r in rows]
+    return {"configured": configured, "proposed": proposed}
 
 
 @app.get("/api/health")

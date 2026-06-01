@@ -59,23 +59,25 @@ def assess_item(item: dict, domains: list[str], client) -> dict | None:
     score = float(result.get("exploit_score", 0))
     item["exploit_score"] = min(1.0, max(0.0, score / 10.0))
     domain = result.get("domain", "")
+    proposed = result.get("domain_proposed", "").strip()
     item["domain"] = _match_domain(domain, domains)
+    item["domain_proposed"] = proposed if proposed else None
     item["status"] = "assessed"
     return item
 
 
 def _match_domain(raw: str, domains: list[str]) -> str:
-    """Match LLM output to the nearest configured domain, or '' if no match."""
+    """Match LLM output to the nearest configured domain, or return the raw value as a proposal."""
     if not raw or not raw.strip():
         return ""
     raw = raw.strip()
     if raw in domains:
         return raw
-    # Try substring match: if the LLM output contains a known domain name
     for d in domains:
         if d in raw or raw in d:
             return d
-    return ""
+    # No match — return as-is as a proposed domain
+    return raw
 
 
 def assess_items(items: list[dict], domains: list[str], client, max_workers: int = 8) -> list[dict]:
