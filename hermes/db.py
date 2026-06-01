@@ -12,6 +12,7 @@ _ALLOWED_COLUMNS = frozenset({
     "source", "title", "url", "content", "published_at",
     "fingerprint", "cluster_id", "embedding", "implicit_cluster",
     "analysis", "entities", "prediction", "exploit_score", "status",
+    "domain",
 })
 
 _VECTOR_COLUMNS = frozenset({"embedding"})
@@ -267,6 +268,52 @@ class Database:
             "SELECT * FROM conclusions WHERE status = %s ORDER BY created_at DESC",
             (status,),
         )
+
+    def get_active_conclusions_with_embeddings(self) -> list[dict]:
+        """Return active conclusions that have embeddings (for cross-run matching)."""
+        return self._query(
+            "SELECT id, statement, domain, confidence, embedding "
+            "FROM conclusions WHERE status = 'active' AND embedding IS NOT NULL"
+        )
+
+    def add_triggered_by(self, conclusion_id: str, item_id: str) -> None:
+        """Append an item_id to the latest version's triggered_by list."""
+        versions = self.get_conclusion_versions(conclusion_id)
+        if not versions:
+            return
+        latest = versions[-1]
+        triggered = latest.get("triggered_by") or []
+        if isinstance(triggered, str):
+            import json
+            triggered = json.loads(triggered) if triggered else []
+        triggered.append({"item_id": item_id[:12]})
+        self.execute(
+            "UPDATE conclusion_versions SET triggered_by = %s::jsonb WHERE id = %s",
+            (json.dumps(triggered), latest["id"]),
+        )
+        self._commit()
+
+    def merge_conclusion(self, from_id: str, into_id: str) -> None:
+        """Merge one conclusion into another, recording lineage."""
+        merged_from = self._query(
+            "SELECT merged_from FROM conclusions WHERE id = %s", (into_id,)
+        )
+        current = merged_from[0].get("merged_from") if merged_from else None
+        if isinstance(current, str):
+            current = json.loads(current)
+        if not current:
+            current = []
+        if from_id not in current:
+            current.append(from_id)
+        self.execute(
+            "UPDATE conclusions SET merged_from = %s::text[] WHERE id = %s",
+            (current, into_id),
+        )
+        self.execute(
+            "UPDATE conclusions SET merged_into = %s, status = 'merged' WHERE id = %s",
+            (into_id, from_id),
+        )
+        self._commit()
 
     def confirm_conclusion(self, id: str, confirmation: str) -> None:
         if confirmation not in ("confirmed", "challenged"):

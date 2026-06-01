@@ -109,22 +109,145 @@ function loadPredictions() {
     });
 }
 
+function confidenceColor(val) {
+  if (val >= 0.7) return '#4caf50';
+  if (val >= 0.5) return '#ff9800';
+  return '#f44336';
+}
+
+function renderEvidence(conclusionData) {
+  const c = conclusionData.conclusion;
+  const items = conclusionData.items || [];
+  const versions = conclusionData.versions || [];
+  const confPct = (c.confidence * 100).toFixed(0);
+  const confColor = confidenceColor(c.confidence);
+
+  // Compute confidence breakdown
+  const itemConfs = items.map(i => {
+    const a = safeJson(i.analysis) || {};
+    return a.confidence || 'medium';
+  });
+  const highCount = itemConfs.filter(x => x === 'high').length;
+  const medCount = itemConfs.filter(x => x === 'medium').length;
+  const lowCount = itemConfs.filter(x => x === 'low').length;
+
+  let html = `
+    <h3 style="margin-bottom:4px;">${c.statement}</h3>
+    <p class="meta">领域: ${c.domain || '未知'} | 状态: ${c.status}</p>
+    <div style="margin:8px 0;padding:8px 12px;background:#222;border-radius:6px;border-left:4px solid ${confColor};">
+      <span style="font-size:24px;font-weight:bold;color:${confColor};">${confPct}%</span>
+      <span style="color:#888;font-size:13px;margin-left:8px;">
+        基于 ${items.length} 篇文章:
+        ${highCount ? highCount + '篇高可靠 ' : ''}${medCount ? medCount + '篇中等 ' : ''}${lowCount ? lowCount + '篇低可靠' : ''}
+      </span>
+    </div>
+    <p class="meta">确认: ${c.user_confirmation || '未标记'}</p>
+  `;
+
+  // Confidence trend
+  if (versions.length > 1) {
+    const trendValues = versions.map(v => (v.confidence * 100).toFixed(0));
+    html += `<div style="margin-top:4px;font-size:13px;color:#aaa;">`
+      + `Trend: ${trendValues.join(' → ')}%</div>`;
+  }
+  if (versions.length > 0) {
+    html += `<details style="margin-top:12px;" open><summary>版本历史 (${versions.length})</summary>`;
+    versions.forEach(v => {
+      const d = new Date(v.created_at).toLocaleDateString();
+      const desc = v.change_description || '';
+      html += `<div class="version-line">`;
+      html += `<strong>v${v.version} [${d}]</strong> ${(v.confidence * 100).toFixed(0)}%`;
+      if (desc) html += `<div style="margin-top:4px;color:#bbb;line-height:1.5;">${desc}</div>`;
+      html += `</div>`;
+    });
+    html += `</details>`;
+  }
+
+  // Supporting evidence
+  const relatedItems = conclusionData.related_items || [];
+  html += `<h4 style="margin-top:20px;border-top:1px solid #333;padding-top:12px;">直接证据 (${items.length})</h4>`;
+
+  if (items.length === 0) {
+    html += `<p class="meta">暂无直接关联文章</p>`;
+  } else {
+    items.forEach((item, idx) => {
+      const analysis = safeJson(item.analysis) || {};
+      const entities = safeJson(item.entities) || [];
+      const confidenceLabel = analysis.confidence === 'high' ? '🟢' : analysis.confidence === 'medium' ? '🟡' : '';
+
+      html += `<div class="evidence-card">`;
+      html += `<div class="evidence-header">`;
+      html += `<strong>${idx + 1}. ${analysis.title_cn || item.title}</strong>`;
+      html += ` <span class="source-tag">${item.source}</span>`;
+      if (confidenceLabel) html += ` <span>${confidenceLabel}</span>`;
+      html += `</div>`;
+
+      if (item.url) {
+        html += `<div><a href="${item.url}" target="_blank" class="source-url">${item.title}</a></div>`;
+      }
+
+      // LLM critical analysis
+      if (analysis.summary) {
+        html += `<div class="analysis-section"><strong>分析摘要:</strong> ${analysis.summary}</div>`;
+      }
+
+      // Key points (source quality flags)
+      if (analysis.key_points && analysis.key_points.length) {
+        html += `<div class="analysis-section"><strong>关键质疑:</strong><ul>`;
+        analysis.key_points.forEach(kp => { html += `<li>${kp}</li>`; });
+        html += `</ul></div>`;
+      }
+
+      // Implications
+      if (analysis.implications) {
+        html += `<div class="analysis-section"><strong>启示:</strong> ${analysis.implications}</div>`;
+      }
+
+      // Entities
+      if (entities.length) {
+        const entLabels = entities.map(e => `${e.name} (${e.type})`).join(', ');
+        html += `<div class="analysis-section"><strong>实体:</strong> ${entLabels}</div>`;
+      }
+
+      html += `</div>`;
+    });
+  }
+
+  // Related items (same domain, broader context)
+  if (relatedItems.length > 0) {
+    html += `<details style="margin-top:16px;"><summary>同领域相关文章 (${relatedItems.length})</summary>`;
+    relatedItems.forEach((item, idx) => {
+      const analysis = safeJson(item.analysis) || {};
+      html += `<div class="evidence-card" style="border-left-color:#555;">`;
+      html += `<div class="evidence-header">${idx + 1}. ${analysis.title_cn || item.title} <span class="source-tag">${item.source}</span></div>`;
+      if (analysis.summary) html += `<div class="analysis-section">${analysis.summary.slice(0, 150)}...</div>`;
+      if (item.url) html += `<div><a href="${item.url}" target="_blank" class="source-url">查看原文</a></div>`;
+      html += `</div>`;
+    });
+    html += `</details>`;
+  }
+
+  // Confirm / Challenge buttons
+  html += `<div style="margin-top:20px;display:flex;gap:8px;">
+    <button class="confirm-btn" onclick="confirmConclusion('${c.id}', 'confirmed')">确认 ✓</button>
+    <button class="confirm-btn challenge" onclick="confirmConclusion('${c.id}', 'challenged')">质疑 ✗</button>
+  </div>`;
+
+  return html;
+}
+
+function safeJson(v) {
+  if (!v) return null;
+  if (typeof v === 'object') return v;
+  try { return JSON.parse(v); } catch(e) { return null; }
+}
+
 function openDrawer(nodeId) {
   fetch(`/api/graph/conclusion/${nodeId}`)
     .then(r => r.json())
     .then(data => {
-      const c = data.conclusion;
-      document.getElementById('drawer-content').innerHTML = `
-        <h3>${c.statement}</h3>
-        <p style="color:#888;">Domain: ${c.domain || 'none'} | Confidence: ${(c.confidence * 100).toFixed(0)}%</p>
-        <p style="color:#888;">Status: ${c.status} | Confirmation: ${c.user_confirmation || 'none'}</p>
-        <h4 style="margin-top:16px;">Version History</h4>
-        ${data.versions.map(v => `<p style="font-size:13px;padding:4px 0;">v${v.version} (${new Date(v.created_at).toLocaleDateString()}): ${v.statement.slice(0, 60)}... [${(v.confidence * 100).toFixed(0)}%]</p>`).join('')}
-        <div style="margin-top:16px;">
-          <button class="confirm-btn" onclick="confirmConclusion('${c.id}', 'confirmed')">✓ Confirm</button>
-          <button class="confirm-btn" onclick="confirmConclusion('${c.id}', 'challenged')">✗ Challenge</button>
-        </div>
-      `;
+      if (data.error) { alert(data.error); return; }
+      document.getElementById('drawer-content').innerHTML = renderEvidence(data);
       document.getElementById('drawer').classList.add('open');
     });
 }

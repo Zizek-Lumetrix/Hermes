@@ -1,6 +1,6 @@
 import json
 from unittest.mock import MagicMock
-from hermes.pipeline.synthesize import density_peak_cluster, synthesize_items
+from hermes.pipeline.synthesize import density_peak_cluster, synthesize_items, match_conclusion
 
 
 def test_density_peak_clustering():
@@ -65,3 +65,34 @@ def test_synthesize_returns_none_for_few_items():
               "analysis": "{}", "exploit_score": 0.5, "embedding": [0.1] * 384}]
     result = synthesize_items(items, ["AI"], MagicMock())
     assert result is None
+
+
+def test_match_conclusion_no_existing_returns_new():
+    result_id, action = match_conclusion([0.1] * 384, 0.6, [])
+    assert result_id is None
+    assert action == "new"
+
+
+def test_match_conclusion_match_found_similar_confidence():
+    existing = [{"id": "c1", "statement": "AI safety improving",
+                 "confidence": 0.65, "embedding": [0.11] * 384}]
+    result_id, action = match_conclusion([0.1] * 384, 0.6, existing)
+    assert result_id == "c1"
+    assert action == "update"
+
+
+def test_match_conclusion_match_found_different_confidence():
+    existing = [{"id": "c1", "statement": "AI safety improving",
+                 "confidence": 0.4, "embedding": [0.11] * 384}]
+    result_id, action = match_conclusion([0.1] * 384, 0.7, existing)
+    assert result_id == "c1"
+    assert action == "version"
+
+
+def test_match_conclusion_no_match_below_threshold():
+    # Use orthogonal-like embeddings to ensure low similarity
+    existing = [{"id": "c1", "statement": "Oil prices rising",
+                 "confidence": 0.5, "embedding": [1.0] * 192 + [-1.0] * 192}]
+    result_id, action = match_conclusion([1.0] * 384, 0.6, existing)
+    assert result_id is None
+    assert action == "new"

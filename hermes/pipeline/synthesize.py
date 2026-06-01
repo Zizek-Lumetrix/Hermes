@@ -54,6 +54,44 @@ def density_peak_cluster(
     return list(clusters.values())
 
 
+def match_conclusion(
+    candidate_embedding: list[float],
+    candidate_confidence: float,
+    existing_conclusions: list[dict],
+    similarity_threshold: float = 0.85,
+) -> tuple[str | None, str]:
+    """Match a candidate conclusion against existing active conclusions.
+
+    Returns (existing_conclusion_id, action) where action is one of:
+      - "new": no match, create a new conclusion
+      - "update": match found, confidence similar → update triggered_by
+      - "version": match found, confidence changed significantly → new version
+    """
+    if not candidate_embedding or not existing_conclusions:
+        return None, "new"
+
+    best_id = None
+    best_sim = -1.0
+    best_confidence = 0.0
+
+    for existing in existing_conclusions:
+        emb = existing.get("embedding")
+        if not emb:
+            continue
+        sim = _cosine_similarity(candidate_embedding, emb)
+        if sim > best_sim:
+            best_sim = sim
+            best_id = existing["id"]
+            best_confidence = existing.get("confidence", 0.5)
+
+    if best_id is None or best_sim < similarity_threshold:
+        return None, "new"
+
+    if abs(candidate_confidence - best_confidence) > 0.1:
+        return best_id, "version"
+    return best_id, "update"
+
+
 def synthesize_items(
     items: list[dict],
     domains: list[str],
@@ -122,6 +160,7 @@ def synthesize_items(
             return None
         if not isinstance(parsed["themes"], list) or len(parsed["themes"]) == 0:
             return None
+        parsed["_clusters"] = clusters
         return parsed
     except Exception:
         return None

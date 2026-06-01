@@ -4,6 +4,7 @@ import time
 import uuid
 from typing import Any
 
+import numpy as np
 from openai import OpenAI
 
 from hermes.config import load_config
@@ -13,10 +14,8 @@ from hermes.ingestors.rss import fetch_feed, RawItem
 from hermes.ingestors.obsidian import read_vault
 from hermes.pipeline.dedup import dedup_items
 from hermes.pipeline.enrich import enrich_items
-from hermes.pipeline.prefilter import prefilter_items
-from hermes.pipeline.analyze import analyze_items
-from hermes.pipeline.postfilter import score_items
-from hermes.pipeline.synthesize import synthesize_items
+from hermes.pipeline.assess import assess_items
+from hermes.pipeline.synthesize import synthesize_items, match_conclusion
 from hermes.pipeline.backtest import backtest_predictions
 
 
@@ -64,7 +63,7 @@ def run(config_path: str | None = None) -> None:
     existing_rows = db._query(
         "SELECT embedding FROM items WHERE embedding IS NOT NULL LIMIT 200"
     )
-    existing_embeddings = [r["embedding"] for r in existing_rows if r.get("embedding")]
+    existing_embeddings = [r["embedding"] for r in existing_rows if r.get("embedding") is not None]
     if existing_embeddings:
         clusterer.cold_start(existing_embeddings)
 
@@ -104,33 +103,19 @@ def run(config_path: str | None = None) -> None:
     elapsed = int((time.monotonic() - t0) * 1000)
     db.log_run(run_id, "dedup", "ok", len(deduped), elapsed)
 
-    # Stage 4: Pre-filter
+    # Stage 4: Assess (unified prefilter + analyze + postfilter)
     t0 = time.monotonic()
-    to_filter = [i for i in enriched if i["status"] == "enriched"]
-    filtered = prefilter_items(to_filter, config.domains, client)
-    for item in filtered:
-        db.update_item(item["id"], status=item["status"])
-    for item in to_filter:
-        if item["status"] == "skipped":
-            db.update_item(item["id"], status="skipped")
-
-    elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "prefilter", "ok", len(filtered), elapsed)
-
-    if not filtered:
-        _finish(db, run_id)
-        return
-
-    # Stage 5: Analyze
-    t0 = time.monotonic()
-    analyzed = analyze_items(filtered, config.domains, client)
-    for item in analyzed:
+    to_assess = [i for i in enriched if i["status"] == "enriched"]
+    assessed = assess_items(to_assess, config.domains, client)
+    for item in assessed:
         db.update_item(
             item["id"],
             status=item["status"],
             analysis=item.get("analysis", ""),
             entities=item.get("entities", ""),
             prediction=item.get("prediction"),
+            exploit_score=item.get("exploit_score", 0),
+            domain=item.get("domain", ""),
         )
         if item.get("prediction"):
             try:
@@ -144,32 +129,115 @@ def run(config_path: str | None = None) -> None:
                     )
             except (json.JSONDecodeError, TypeError):
                 pass
+    # Mark skipped items in DB
+    for item in to_assess:
+        if item["status"] == "skipped":
+            db.update_item(item["id"], status="skipped")
 
     elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "analyze", "ok", len(analyzed), elapsed)
+    analyzed_count = len(assessed)
+    db.log_run(run_id, "assess", "ok", analyzed_count, elapsed)
 
-    # Stage 6: Post-filter
+    if not assessed:
+        _finish(db, run_id)
+        return
+
+    # Stage 5: Synthesize
     t0 = time.monotonic()
-    scored = score_items(analyzed, config.domains, client)
-    for item in scored:
-        db.update_item(item["id"], exploit_score=item["exploit_score"], status="scored")
-
-    elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "postfilter", "ok", len(scored), elapsed)
-
-    # Stage 7: Synthesize
-    t0 = time.monotonic()
-    synthesis = synthesize_items(scored, config.domains, client, min_score=0.3)
+    synthesis = synthesize_items(assessed, config.domains, client, min_score=0.3)
     if synthesis:
-        for theme in synthesis.get("themes", []):
-            for short_id in theme.get("related_item_ids", []):
-                matching = [i for i in scored if i["id"].startswith(short_id)]
-                for m in matching:
-                    db.update_item(m["id"], status="incorporated")
-    elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "synthesize", "ok", 1 if synthesis else 0, elapsed)
+        # Load existing conclusions for cross-run matching
+        existing_conclusions = db.get_active_conclusions_with_embeddings()
 
-    # Stage 8: Backtest
+        # Build cluster lookup: short_id -> full item IDs in the same cluster
+        clusters = synthesis.pop("_clusters", [])
+        cluster_map: dict[str, list[str]] = {}
+        for cl in clusters:
+            for item_id in cl:
+                short = item_id[:12]
+                cluster_map.setdefault(short, []).append(item_id)
+
+        for theme in synthesis.get("themes", []):
+            related_items = []
+            seen_ids = set()
+            for short_id in theme.get("related_item_ids", []):
+                full_ids = cluster_map.get(short_id, [short_id])
+                for fid in full_ids:
+                    if fid not in seen_ids:
+                        seen_ids.add(fid)
+                        matching = [i for i in assessed if i["id"].startswith(fid[:12])]
+                        related_items.extend(matching)
+
+            if not related_items:
+                continue
+
+            # Determine domain from related items (use domain assigned by assess)
+            domains_seen: dict[str, int] = {}
+            for item in related_items:
+                d = item.get("domain", "")
+                if d:
+                    domains_seen[d] = domains_seen.get(d, 0) + 1
+            domain = max(domains_seen, key=domains_seen.get) if domains_seen else config.domains[0]
+
+            # Compute embedding as mean of related item embeddings
+            item_embs = [item["embedding"] for item in related_items if item.get("embedding")]
+            if item_embs:
+                mean_emb = np.mean(np.array(item_embs), axis=0).tolist()
+            else:
+                mean_emb = [0.0] * 384
+
+            # Compute confidence from evidence
+            confidence_map = {"high": 0.85, "medium": 0.6, "low": 0.35}
+            weights = []
+            bases = []
+            for item in related_items:
+                try:
+                    analysis = json.loads(item.get("analysis", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    analysis = {}
+                bases.append(confidence_map.get(analysis.get("confidence", "medium"), 0.5))
+                weights.append(max(0.2, item.get("exploit_score", 0.5)))
+            total_w = sum(weights) if weights else 1.0
+            avg_conf = sum(b * w for b, w in zip(bases, weights)) / total_w
+            n = len(related_items)
+            size_factor = min(1.12, 0.6 + 0.12 * min(n, 4) + 0.02 * max(0, n - 4))
+            confidence = round(min(0.95, avg_conf * size_factor), 2)
+
+            # Cross-run matching
+            matched_id, action = match_conclusion(mean_emb, confidence, existing_conclusions)
+
+            if action == "new":
+                conclusion_id = str(uuid.uuid4())
+            else:
+                conclusion_id = matched_id
+                if action == "update":
+                    # Blend confidence slightly toward new evidence
+                    existing = db.get_conclusion(matched_id)
+                    if existing:
+                        confidence = round((existing["confidence"] + confidence) / 2, 2)
+
+            db.upsert_conclusion(
+                id=conclusion_id,
+                statement=theme.get("title", ""),
+                domain=domain,
+                confidence=confidence,
+                embedding=mean_emb,
+                change_description=theme.get("summary", ""),
+                triggered_by=[{"item_id": item["id"][:12]} for item in related_items],
+            )
+
+            if action == "update":
+                for item in related_items:
+                    db.add_triggered_by(conclusion_id, item["id"])
+
+            for item in related_items:
+                db.update_item(item["id"], status="incorporated")
+
+    elapsed = int((time.monotonic() - t0) * 1000)
+    theme_count = len(synthesis.get("themes", [])) if synthesis else 0
+    db.log_run(run_id, "synthesize", "ok", theme_count, elapsed)
+
+    # Stage 6: Backtest
     t0 = time.monotonic()
     pending = db.get_pending_predictions()
     if pending:
