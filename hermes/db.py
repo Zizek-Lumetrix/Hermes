@@ -11,8 +11,8 @@ from pgvector.psycopg2 import register_vector
 _ALLOWED_COLUMNS = frozenset({
     "source", "title", "url", "content", "published_at",
     "fingerprint", "cluster_id", "embedding", "implicit_cluster",
-    "analysis", "entities", "prediction", "exploit_score", "status",
-    "domain",
+    "analysis", "entities", "prediction", "exploit_score", "surprise_score",
+    "status", "domain",
 })
 
 _VECTOR_COLUMNS = frozenset({"embedding"})

@@ -1,0 +1,67 @@
+{
+  "domain_list": "AI编程工具、大模型安全、能源安全",
+  "items": [
+    {
+      "id": "abc123def456",
+      "title": "GitHub Copilot X Brings GPT-4 Powered Chat to Every Developer",
+      "source": "TechCrunch",
+      "analysis": {
+        "title_cn": "GitHub Copilot X 集成GPT-4为所有开发者提供对话式编程",
+        "summary": "GitHub发布Copilot X，集成GPT-4，新增对话式代码生成、语音命令和自动PR描述功能，早期用户报告任务完成速度提升55%",
+        "key_points": ["GPT-4集成显著提升代码理解能力", "从自动补全转向自主编程代理"],
+        "implications": "AI编程工具正在从辅助角色转变为主角，可能改变软件开发的工作流程和技能需求",
+        "confidence": "high"
+      },
+      "exploit_score": 8,
+      "surprise_score": 0.3
+    },
+    {
+      "id": "def789ghi012",
+      "title": "Cursor IDE Raises $100M to Build AI-First Development Environment",
+      "source": "VentureBeat",
+      "analysis": {
+        "title_cn": "Cursor IDE融资1亿美元打造AI原生开发环境",
+        "summary": "Cursor获得1亿美元融资，估值25亿美元，将开发完全AI原生的IDE，支持自然语言编程和多文件重构",
+        "key_points": ["AI原生IDE市场正在形成", "自然语言编程成为新范式"],
+        "implications": "IDE市场正从传统工具向AI原生工具转型，微软的VS Code垄断可能受到挑战",
+        "confidence": "high"
+      },
+      "exploit_score": 7,
+      "surprise_score": 0.6
+    },
+    {
+      "id": "ghi345jkl678",
+      "title": "Devin AI Software Engineer Shows 80% Task Completion Rate on SWE-bench",
+      "source": "Ars Technica",
+      "analysis": {
+        "title_cn": "Devin AI软件工程师在SWE-bench上达到80%任务完成率",
+        "summary": "Cognition AI的Devin在SWE-bench测试中达到80%完成率，但实际生产环境测试中表现显著下降",
+        "key_points": ["benchmark表现与生产环境差距大", "自主Agent仍不可靠"],
+        "implications": "AI编程Agent的benchmark与真实世界表现存在显著差距，部署可靠性仍需大幅提升",
+        "confidence": "medium"
+      },
+      "exploit_score": 6,
+      "surprise_score": 0.9
+    },
+    {
+      "id": "jkl901mno234",
+      "title": "Sourcegraph Cody Adds Multi-Repository Context for Enterprise Codebases",
+      "source": "DevClass",
+      "analysis": {
+        "title_cn": "Sourcegraph Cody新增跨仓库上下文理解企业代码库",
+        "summary": "Sourcegraph的AI编程助手Cody新增跨仓库上下文功能，能理解完整的企业代码库结构",
+        "key_points": ["跨仓库上下文是差异化优势", "企业级功能可能成为竞争壁垒"],
+        "implications": "代码搜索与AI编程的融合正在创造新的企业工具类别",
+        "confidence": "medium"
+      },
+      "exploit_score": 5,
+      "surprise_score": 0.4
+    }
+  ],
+  "expected": {
+    "min_themes": 1,
+    "has_counter_evidence": true,
+    "has_connections": true,
+    "has_narrative": true
+  }
+}

@@ -7,25 +7,15 @@ def test_rules_reject_short_content():
     assert not apply_rules(item, ["AI"])
 
 
-def test_rules_accept_valid_item():
-    item = {
-        "title": "Breakthrough in AI Safety",
-        "content": "Researchers have made significant progress in AI alignment techniques, "
-                   "publishing new results that demonstrate improved safety measures. "
-                   "This line is added to make the total content length exceed two hundred characters "
-                   "so that the rule-based prefilter accepts this item as valid.",
-        "source": "ArXiv",
-    }
-    assert apply_rules(item, ["AI", "安全"])
-
-
-def test_rules_reject_no_domain_keyword_overlap():
+def test_rules_accept_long_content():
     item = {
         "title": "Local Sports Update",
-        "content": "The local team won the championship game last night in overtime.",
+        "content": "The local team won the championship game last night in overtime. "
+                   "This is additional padding to ensure the content exceeds the minimum "
+                   "two hundred character count required by the rule-based prefilter stage.",
         "source": "Local News",
     }
-    assert not apply_rules(item, ["AI", "大模型安全", "中东局势"])
+    assert apply_rules(item, ["AI", "大模型安全", "中东局势"])
 
 
 def test_prefilter_rules_only_stage():

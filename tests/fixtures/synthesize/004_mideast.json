@@ -1,0 +1,53 @@
+{
+  "domain_list": "中东局势、地缘政治、能源安全",
+  "items": [
+    {
+      "id": "hij789klm012",
+      "title": "Houthi Attacks on Red Sea Shipping Disrupt 30% of Global Container Traffic",
+      "source": "Lloyd's List",
+      "analysis": {
+        "title_cn": "胡塞武装红海袭击扰乱全球30%集装箱运输",
+        "summary": "胡塞武装持续对红海商船发动袭击，全球约30%的集装箱运输被迫改道好望角，运费飙升300%",
+        "key_points": ["红海航线安全形势恶化", "全球供应链再次面临中断风险"],
+        "implications": "航运改道将对全球通胀和能源价格产生连锁影响，可能持续到2026年",
+        "confidence": "high"
+      },
+      "exploit_score": 9,
+      "surprise_score": 0.5
+    },
+    {
+      "id": "klm345nop678",
+      "title": "Iran-Israel Shadow War Escalates with Cyber Attack on Water Infrastructure",
+      "source": "CyberScoop",
+      "analysis": {
+        "title_cn": "伊朗-以色列影子战争升级为水资源基础设施网络攻击",
+        "summary": "以色列水务系统遭受大规模网络攻击，以色列将攻击归因于伊朗支持的黑客组织",
+        "key_points": ["关键基础设施成为网络战目标", "冲突从物理领域扩展到网络空间"],
+        "implications": "中东冲突正在从传统军事对抗转向多维度的混合战争",
+        "confidence": "high"
+      },
+      "exploit_score": 8,
+      "surprise_score": 0.6
+    },
+    {
+      "id": "nop901qrs234",
+      "title": "UAE Mediates Ceasefire Talks Between Saudi-Backed and Iranian-Backed Factions in Yemen",
+      "source": "Al Jazeera",
+      "analysis": {
+        "title_cn": "阿联酋斡旋也门沙特支持派与伊朗支持派停火谈判",
+        "summary": "阿联酋正在斡旋也门冲突各方的停火谈判，但双方在关键问题上立场差距仍然显著",
+        "key_points": ["外交斡旋有进展但不确定", "地区力量平衡正在微妙变化"],
+        "implications": "海湾国家正在寻求更独立的外交角色，减少对美国的依赖",
+        "confidence": "medium"
+      },
+      "exploit_score": 5,
+      "surprise_score": 0.7
+    }
+  ],
+  "expected": {
+    "min_themes": 1,
+    "has_counter_evidence": true,
+    "has_connections": true,
+    "has_narrative": true
+  }
+}

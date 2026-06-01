@@ -6,17 +6,7 @@ def apply_rules(item: dict, domains: list[str]) -> bool:
     content = item.get("content", "")
     if len(content) < 200:
         return False
-
-    text = (item.get("title", "") + " " + content[:500]).lower()
-    for domain in domains:
-        domain_lower = domain.lower()
-        if domain_lower in text:
-            return True
-        if " " in domain_lower:
-            for keyword in domain_lower.split():
-                if len(keyword) >= 2 and keyword in text:
-                    return True
-    return False
+    return True
 
 
 def prefilter_items(

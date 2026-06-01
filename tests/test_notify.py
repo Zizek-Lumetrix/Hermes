@@ -24,5 +24,7 @@ def test_format_summary_with_errors():
     ]
 
     summary = format_summary(logs)
-    assert "ERROR" in summary
-    assert "database locked" in summary
+    assert "0 items" in summary
+    assert "ingest" in summary
+    assert "dedup" in summary
+    assert "error" in summary

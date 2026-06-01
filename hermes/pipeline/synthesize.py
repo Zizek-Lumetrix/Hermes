@@ -1,7 +1,16 @@
 import json
 import re
+from pathlib import Path
 
 import numpy as np
+
+
+def _load_prompt(name: str) -> str:
+    path = Path(__file__).resolve().parent.parent / "prompts" / name
+    return path.read_text()
+
+
+_SYNTHESIZE_PROMPT = _load_prompt("synthesize.txt")
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -99,8 +108,14 @@ def synthesize_items(
     min_score: float = 0.5,
     min_items: int = 3,
 ) -> dict | None:
-    qualified = [i for i in items if i.get("exploit_score", 0) >= min_score]
-    qualified.sort(key=lambda i: i.get("exploit_score", 0), reverse=True)
+    qualified = [
+        i for i in items
+        if max(i.get("exploit_score", 0), i.get("surprise_score", 0)) >= min_score
+    ]
+    qualified.sort(
+        key=lambda i: i.get("exploit_score", 0) * 0.6 + i.get("surprise_score", 0) * 0.4,
+        reverse=True,
+    )
     qualified = qualified[:60]
 
     if len(qualified) < min_items:
@@ -130,19 +145,7 @@ def synthesize_items(
             f"[{short_id}] {title} (来源:{source})\n{summary}"
         )
 
-    prompt = (
-        f"你是一个情报分析专家，关注领域：{domain_list}。\n\n"
-        f"以下是通过向量聚类自动发现的内容群组。请解释这些群组为什么存在："
-        f"它们代表什么主题？条目之间有什么逻辑关联？\n\n"
-        f"输出严格 JSON 格式（不含代码块标记）：\n"
-        f'{{"themes": [{{"title": "<主题名称>", "summary": "<100字主题概述>", '
-        f'"related_item_ids": ["<条目ID前缀>"], "significance": "<对该领域的意义>"}}], '
-        f'"connections": [{{"from_theme": 0, "to_theme": 1, '
-        f'"relationship": "因果关系|并列发展|对立矛盾|支撑佐证", '
-        f'"description": "<一句话关联描述>"}}], '
-        f'"overall_narrative": "<200字全局脉络>"}}\n\n'
-        f"要求：themes 至少1个，每个至少关联1条条目。每条条目只归属一个主题。"
-    )
+    prompt = _SYNTHESIZE_PROMPT.format(domain_list=domain_list)
 
     user_msg = prompt + "\n\n---\n" + "\n---\n".join(summaries)
 

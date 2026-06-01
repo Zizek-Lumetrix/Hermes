@@ -22,6 +22,7 @@ def main():
     pt_parser = sub.add_parser("test-prompts", help="Run prompt regression tests against fixtures")
     pt_parser.add_argument("-n", type=int, default=None, help="Number of fixtures to test (default: all)")
     pt_parser.add_argument("--threshold", type=int, default=4, help="Pass threshold 0-5 (default: 4)")
+    pt_parser.add_argument("--synthesize", action="store_true", help="Test synthesize prompt instead of assess")
 
     args = parser.parse_args()
 
@@ -68,14 +69,20 @@ def main():
         import os
         from openai import OpenAI
         from hermes.config import load_config
-        from hermes.pipeline.test_prompts import run_prompt_tests, format_prompt_test_report
 
         config_path = args.config or os.path.expanduser("~/.hermes/config.yaml")
         config = load_config(config_path)
         client = OpenAI(api_key=config.llm_api_key, base_url=config.llm_base_url)
-        report = run_prompt_tests(client, config.domains,
-                                  limit=args.n, threshold=args.threshold)
-        print(format_prompt_test_report(report))
+
+        if args.synthesize:
+            from hermes.pipeline.test_prompts import run_synthesize_tests, format_synthesize_test_report
+            report = run_synthesize_tests(client, limit=args.n, threshold=args.threshold)
+            print(format_synthesize_test_report(report))
+        else:
+            from hermes.pipeline.test_prompts import run_prompt_tests, format_prompt_test_report
+            report = run_prompt_tests(client, config.domains,
+                                      limit=args.n, threshold=args.threshold)
+            print(format_prompt_test_report(report))
     else:
         parser.print_help()
 

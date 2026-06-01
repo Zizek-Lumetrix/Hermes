@@ -76,6 +76,20 @@ def get_graph():
     return {"nodes": nodes, "edges": edges}
 
 
+def _serialize_row(row, drop_fields=("embedding",)):
+    """Convert a RealDictRow to a plain dict, stripping numpy arrays."""
+    if row is None:
+        return None
+    out = {}
+    for k, v in dict(row).items():
+        if k in drop_fields:
+            continue
+        if hasattr(v, "tolist"):
+            v = v.tolist()
+        out[k] = v
+    return out
+
+
 @app.get("/api/graph/conclusion/{conclusion_id}")
 def get_conclusion_detail(conclusion_id: str):
     if not _db_ok():
@@ -85,7 +99,57 @@ def get_conclusion_detail(conclusion_id: str):
     if not conclusion:
         return {"error": "not found"}, 404
     versions = db.get_conclusion_versions(conclusion_id)
-    return {"conclusion": conclusion, "versions": versions}
+    versions_out = [_serialize_row(v) for v in versions]
+
+    # Collect supporting items from version history
+    item_ids = set()
+    for v in versions:
+        triggered = v.get("triggered_by")
+        if triggered:
+            for t in triggered:
+                item_ids.add(t.get("item_id", ""))
+
+    items_out = []
+    seen_ids = set()
+    for short_id in item_ids:
+        rows = db._query(
+            "SELECT id, title, url, source, analysis, entities, exploit_score, "
+            "published_at FROM items WHERE id LIKE %s || '%%'",
+            (short_id,),
+        )
+        for r in rows:
+            if r["id"] not in seen_ids:
+                seen_ids.add(r["id"])
+                items_out.append(_serialize_row(r))
+
+    # Also fetch domain-related items (scored items in the same domain, for broader context)
+    domain_items = []
+    if conclusion.get("domain"):
+        domain_rows = db._query(
+            "SELECT id, title, url, source, analysis, entities, exploit_score, "
+            "published_at FROM items WHERE status IN ('assessed', 'incorporated') "
+            "ORDER BY exploit_score DESC LIMIT 30"
+        )
+        for r in domain_rows:
+            if r["id"] not in seen_ids:
+                seen_ids.add(r["id"])
+                domain_items.append(_serialize_row(r))
+
+    # Extract counter_evidence from latest version's change_description
+    counter_evidence = ""
+    if versions_out:
+        latest = versions_out[-1]
+        desc = latest.get("change_description") or ""
+        if "反对意见:" in desc:
+            counter_evidence = desc.split("反对意见:", 1)[1].strip()
+
+    return {
+        "conclusion": _serialize_row(conclusion),
+        "versions": versions_out,
+        "counter_evidence": counter_evidence,
+        "items": items_out,
+        "related_items": domain_items,
+    }
 
 
 @app.post("/api/graph/conclusion/{conclusion_id}/confirm")
@@ -121,6 +185,21 @@ def get_stream(
             "timestamp": str(log.get("created_at", "")),
         })
     return {"entries": entries}
+
+
+@app.get("/api/surprise")
+def get_surprise(limit: int = Query(20, le=50)):
+    if not _db_ok():
+        return []
+    db = get_db()
+    rows = db._query(
+        "SELECT id, title, source, url, domain, analysis, entities, exploit_score, "
+        "surprise_score, published_at FROM items "
+        "WHERE status IN ('assessed', 'incorporated') AND surprise_score > 0.5 "
+        "ORDER BY surprise_score DESC LIMIT %s",
+        (limit,),
+    )
+    return [_serialize_row(r) for r in rows]
 
 
 @app.get("/api/predictions")

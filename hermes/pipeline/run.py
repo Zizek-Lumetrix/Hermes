@@ -142,6 +142,47 @@ def run(config_path: str | None = None) -> None:
         _finish(db, run_id)
         return
 
+    # Stage 4.5: Compute surprise scores
+    t0 = time.monotonic()
+    existing_for_surprise = db.get_active_conclusions_with_embeddings()
+    domain_conclusions: dict[str, list[tuple[list[float], float]]] = {}
+    for c in existing_for_surprise:
+        emb = c.get("embedding")
+        dom = c.get("domain", "")
+        if emb and dom:
+            domain_conclusions.setdefault(dom, []).append((emb, c.get("confidence", 0.5)))
+
+    for item in assessed:
+        item_emb = item.get("embedding")
+        item_domain = item.get("domain", "")
+        if not item_emb or not item_domain:
+            item["surprise_score"] = 0.5
+            db.update_item(item["id"], surprise_score=0.5)
+            continue
+
+        candidates = domain_conclusions.get(item_domain, [])
+        if not candidates:
+            item["surprise_score"] = 1.0
+            db.update_item(item["id"], surprise_score=1.0)
+            continue
+
+        max_sim = 0.0
+        vec = np.array(item_emb, dtype=np.float32)
+        vec = vec / np.linalg.norm(vec)
+        for emb, _ in candidates:
+            cand = np.array(emb, dtype=np.float32)
+            cand = cand / np.linalg.norm(cand)
+            sim = float(np.dot(vec, cand))
+            if sim > max_sim:
+                max_sim = sim
+
+        surprise = round(1.0 - max_sim, 2)
+        item["surprise_score"] = surprise
+        db.update_item(item["id"], surprise_score=surprise)
+
+    elapsed = int((time.monotonic() - t0) * 1000)
+    db.log_run(run_id, "surprise", "ok", len(assessed), elapsed)
+
     # Stage 5: Synthesize
     t0 = time.monotonic()
     synthesis = synthesize_items(assessed, config.domains, client, min_score=0.3)
@@ -216,13 +257,18 @@ def run(config_path: str | None = None) -> None:
                     if existing:
                         confidence = round((existing["confidence"] + confidence) / 2, 2)
 
+            counter = theme.get("counter_evidence", "")
+            desc = theme.get("summary", "")
+            if counter:
+                desc = desc + "\n\n反对意见: " + counter
+
             db.upsert_conclusion(
                 id=conclusion_id,
                 statement=theme.get("title", ""),
                 domain=domain,
                 confidence=confidence,
                 embedding=mean_emb,
-                change_description=theme.get("summary", ""),
+                change_description=desc,
                 triggered_by=[{"item_id": item["id"][:12]} for item in related_items],
             )
 

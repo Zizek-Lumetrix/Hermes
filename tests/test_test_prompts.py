@@ -133,3 +133,166 @@ def test_run_prompt_tests_integration():
     report = run_prompt_tests(mock_client, limit=3, threshold=4)
     assert report["total"] == 3
     assert report["passed"] == 3
+
+
+# -- Synthesize test runner tests --
+
+def test_load_synthesize_fixtures():
+    from hermes.pipeline.test_prompts import load_synthesize_fixtures
+    fixtures = load_synthesize_fixtures()
+    assert len(fixtures) == 4
+
+
+def test_load_synthesize_fixtures_with_limit():
+    from hermes.pipeline.test_prompts import load_synthesize_fixtures
+    fixtures = load_synthesize_fixtures(limit=2)
+    assert len(fixtures) == 2
+
+
+def test_compare_synthesize_result_perfect():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    result = {
+        "themes": [
+            {
+                "title": "AI编程工具竞争加剧",
+                "summary": "多家公司推出AI编程工具",
+                "related_item_ids": ["abc123def456"],
+                "significance": "改变软件开发范式",
+                "counter_evidence": "目前所有工具都在演示阶段，实际部署数据有限",
+            }
+        ],
+        "connections": [
+            {"from_theme": 0, "to_theme": 0, "relationship": "因果关系", "description": "竞争驱动创新"}
+        ],
+        "overall_narrative": "AI编程工具市场正在快速演变",
+    }
+    expected = {
+        "min_themes": 1,
+        "has_counter_evidence": True,
+        "has_connections": True,
+        "has_narrative": True,
+    }
+    score, issues = _compare_synthesize_result(result, expected)
+    assert score == 5
+    assert issues == []
+
+
+def test_compare_synthesize_result_missing_counter_evidence():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    result = {
+        "themes": [
+            {
+                "title": "测试主题",
+                "summary": "摘要",
+                "related_item_ids": ["abc123"],
+                "significance": "意义",
+                "counter_evidence": "",  # empty!
+            }
+        ],
+        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "支撑佐证", "description": "关联"}],
+        "overall_narrative": "全局叙事",
+    }
+    expected = {"has_counter_evidence": True}
+    score, issues = _compare_synthesize_result(result, expected)
+    assert score < 5
+    assert any("counter_evidence" in i for i in issues)
+
+
+def test_compare_synthesize_result_no_themes():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    result = {
+        "themes": [],
+        "connections": [],
+        "overall_narrative": "empty",
+    }
+    expected = {}
+    score, issues = _compare_synthesize_result(result, expected)
+    assert score < 3
+    assert any("themes" in i for i in issues)
+
+
+def test_compare_synthesize_result_not_dict():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    score, issues = _compare_synthesize_result([], {})
+    assert score == 0
+    assert any("not a JSON object" in i for i in issues)
+
+
+def test_compare_synthesize_result_missing_narrative():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    result = {
+        "themes": [
+            {
+                "title": "T", "summary": "S", "related_item_ids": ["x"],
+                "significance": "sig", "counter_evidence": "CE",
+            }
+        ],
+        "connections": [],
+        "overall_narrative": "",
+    }
+    expected = {"has_narrative": True}
+    score, issues = _compare_synthesize_result(result, expected)
+    assert any("overall_narrative" in i for i in issues)
+
+
+def test_run_synthesize_tests_integration():
+    """Integration test: run synthesize fixtures through prompt with mock LLM."""
+    from hermes.pipeline.test_prompts import run_synthesize_tests
+
+    mock_client = MagicMock()
+
+    def mock_create(*args, **kwargs):
+        msg = MagicMock()
+        msg.choices = [MagicMock(message=MagicMock(
+            content=json.dumps({
+                "themes": [
+                    {
+                        "title": "测试主题",
+                        "summary": "这是一个测试主题的摘要",
+                        "related_item_ids": ["abc123def456"],
+                        "significance": "测试意义",
+                        "counter_evidence": "目前数据量有限，尚不能得出确定结论",
+                    }
+                ],
+                "connections": [
+                    {"from_theme": 0, "to_theme": 0, "relationship": "因果关系", "description": "测试关联"}
+                ],
+                "overall_narrative": "测试全局叙事，描述整体趋势",
+            })
+        ))]
+        return msg
+
+    mock_client.chat.completions.create.side_effect = mock_create
+
+    report = run_synthesize_tests(mock_client, limit=2, threshold=4)
+    assert report["total"] == 2
+    assert report["passed"] == 2
+
+
+def test_format_synthesize_report_all_pass():
+    from hermes.pipeline.test_prompts import format_synthesize_test_report
+    report = {
+        "passed": 3, "total": 3,
+        "results": [
+            {"fixture": "001", "score": 5, "issues": [], "theme_count": 2},
+            {"fixture": "002", "score": 4, "issues": [], "theme_count": 1},
+            {"fixture": "003", "score": 5, "issues": [], "theme_count": 3},
+        ],
+    }
+    output = format_synthesize_test_report(report)
+    assert "PASS" in output
+    assert "safe to deploy" in output
+
+
+def test_format_synthesize_report_with_failures():
+    from hermes.pipeline.test_prompts import format_synthesize_test_report
+    report = {
+        "passed": 1, "total": 2,
+        "results": [
+            {"fixture": "001", "score": 5, "issues": [], "theme_count": 2},
+            {"fixture": "002", "score": 2, "issues": ["counter_evidence: all themes must have non-empty counter_evidence"], "theme_count": 1},
+        ],
+    }
+    output = format_synthesize_test_report(report)
+    assert "FAIL" in output
+    assert "below threshold" in output

@@ -1,20 +1,40 @@
-const width = document.getElementById('graph-container').clientWidth;
-const height = document.getElementById('graph-container').clientHeight;
+// -- Tab switching --
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'graph') loadGraph();
+    else if (btn.dataset.tab === 'surprise') loadSurprise();
+    else if (btn.dataset.tab === 'predictions') loadPredictions();
+    else if (btn.dataset.tab === 'stream') loadStream();
+  });
+});
 
-const svg = d3.select('#graph-container')
-  .append('svg')
-  .attr('width', width)
-  .attr('height', height);
-
-const g = svg.append('g');
-svg.call(d3.zoom().on('zoom', (e) => g.attr('transform', e.transform)));
-
-const simulation = d3.forceSimulation()
-  .force('charge', d3.forceManyBody().strength(-100))
-  .force('center', d3.forceCenter(width / 2, height / 2))
-  .force('collision', d3.forceCollide(30));
-
+// -- Knowledge Graph --
+let graphLoaded = false;
 function loadGraph() {
+  if (graphLoaded) return;
+  graphLoaded = true;
+
+  const container = document.getElementById('graph-container');
+  const width = container.clientWidth;
+  const height = container.clientHeight || 400;
+
+  const svg = d3.select('#graph-container')
+    .append('svg')
+    .attr('width', width)
+    .attr('height', height);
+
+  const g = svg.append('g');
+  svg.call(d3.zoom().on('zoom', (e) => g.attr('transform', e.transform)));
+
+  const simulation = d3.forceSimulation()
+    .force('charge', d3.forceManyBody().strength(-100))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide(30));
+
   fetch('/api/graph')
     .then(r => r.json())
     .then(data => {
@@ -32,8 +52,8 @@ function loadGraph() {
         .attr('stroke-width', 1);
 
       const color = d3.scaleOrdinal()
-        .domain(['AI', '能源安全', '中东局势', '地缘政治', '大模型安全', 'AI编程工具'])
-        .range(['#4caf50', '#ff9800', '#f44336', '#9c27b0', '#2196f3', '#00bcd4']);
+        .domain(['AI编程工具', '大模型安全', '中东局势', '能源安全', '地缘政治'])
+        .range(['#4caf50', '#2196f3', '#f44336', '#ff9800', '#9c27b0']);
 
       const node = g.selectAll('.nodes')
         .data(data.nodes)
@@ -49,7 +69,6 @@ function loadGraph() {
       node.on('click', (e, d) => openDrawer(d.id));
       node.append('title').text(d => d.label);
 
-      // Labels
       const labels = g.selectAll('.node-label')
         .data(data.nodes)
         .join('text')
@@ -70,51 +89,109 @@ function loadGraph() {
     });
 }
 
-function loadStream() {
-  fetch('/api/stream?limit=20')
+// -- Surprise Tab --
+function loadSurprise() {
+  fetch('/api/surprise?limit=20')
     .then(r => r.json())
     .then(data => {
-      const container = document.getElementById('stream-entries');
-      if (!data.entries || data.entries.length === 0) {
-        container.innerHTML = '<div class="stream-entry">No updates yet. Run the pipeline to see results.</div>';
+      const panel = document.getElementById('surprise-panel');
+      if (!data || data.length === 0) {
+        panel.innerHTML = '<p style="color:#888;padding:24px;">No high-surprise items yet. Run the pipeline to discover unexpected intelligence.</p>';
         return;
       }
-      container.innerHTML = data.entries.map(e => {
-        const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : '';
-        return `<div class="stream-entry">
-          <span class="type type-pipeline">${e.stage}</span>
-          ${e.status} | ${e.item_count} items
-          <span style="color:#888;float:right;">${ts}</span>
+      panel.innerHTML = data.map(item => {
+        const analysis = safeJson(item.analysis) || {};
+        const surprisePct = (item.surprise_score * 100).toFixed(0);
+        return `<div class="surprise-card">
+          <span class="score">${surprisePct}%</span>
+          <strong>${analysis.title_cn || item.title}</strong>
+          <span class="source-tag" style="margin-left:8px;">${item.source}</span>
+          <span class="source-tag" style="margin-left:4px;background:#2a1a1a;color:#f44336;">${item.domain || ''}</span>
+          <div class="analysis-section">${(analysis.summary || '').slice(0, 200)}</div>
+          ${analysis.key_points && analysis.key_points.length ? `<div class="analysis-section"><strong>关键点:</strong><ul>${analysis.key_points.map(kp => `<li>${kp}</li>`).join('')}</ul></div>` : ''}
+          ${analysis.implications ? `<div class="analysis-section"><strong>启示:</strong> ${analysis.implications}</div>` : ''}
+          ${item.url ? `<div style="margin-top:4px;"><a href="${item.url}" target="_blank" class="source-url">${item.title}</a></div>` : ''}
         </div>`;
       }).join('');
     });
 }
 
+// -- Predictions Tab --
 function loadPredictions() {
   fetch('/api/predictions?status=all')
     .then(r => r.json())
     .then(data => {
-      const tbody = document.getElementById('scorecard-body');
-      if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3">No predictions yet.</td></tr>';
-        return;
+      const now = new Date();
+      const pending = (data || []).filter(p => !p.backtest_result && p.deadline);
+      const verified = (data || []).filter(p => p.backtest_result);
+
+      // Pending with countdown
+      const pBody = document.getElementById('pending-body');
+      if (pending.length === 0) {
+        pBody.innerHTML = '<tr><td colspan="3" style="color:#888;">No pending predictions.</td></tr>';
+      } else {
+        pBody.innerHTML = pending.map(p => {
+          const deadline = new Date(p.deadline);
+          const daysRemaining = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+          const countdown = daysRemaining > 0
+            ? `${daysRemaining} days`
+            : daysRemaining === 0 ? 'Today' : 'Overdue';
+          const cdClass = daysRemaining <= 0 ? 'countdown' : '';
+          return `<tr>
+            <td>${p.statement}</td>
+            <td>${p.deadline}</td>
+            <td class="${cdClass}">${countdown}</td>
+          </tr>`;
+        }).join('');
       }
-      tbody.innerHTML = data.map(p => `
-        <tr>
-          <td>${p.statement}</td>
-          <td>${p.deadline}</td>
-          <td>${p.backtest_result || '<em>pending</em>'}</td>
-        </tr>
-      `).join('');
+
+      // Verified
+      const vBody = document.getElementById('verified-body');
+      if (verified.length === 0) {
+        vBody.innerHTML = '<tr><td colspan="3" style="color:#888;">No verified predictions yet. Predictions need time to accumulate.</td></tr>';
+      } else {
+        vBody.innerHTML = verified.map(p => {
+          const resultClass = `result-${p.backtest_result}`;
+          return `<tr>
+            <td>${p.statement}</td>
+            <td>${p.deadline}</td>
+            <td class="${resultClass}">${p.backtest_result}</td>
+          </tr>`;
+        }).join('');
+      }
     });
 }
 
+// -- Activity Stream --
+function loadStream() {
+  fetch('/api/stream?limit=30')
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('stream-entries');
+      if (!data.entries || data.entries.length === 0) {
+        container.innerHTML = '<p style="color:#888;padding:24px;">No pipeline runs yet.</p>';
+        return;
+      }
+      container.innerHTML = data.entries.map(e => {
+        const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : '';
+        const statusClass = e.status === 'ok' ? '#4caf50' : e.status === 'error' ? '#f44336' : '#ffc107';
+        return `<div style="padding:6px 0;border-bottom:1px solid #1a1a1a;font-size:13px;">
+          <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:8px;background:#2a2a2a;color:${statusClass};">${e.stage}</span>
+          ${e.status} | ${e.item_count} items
+          <span style="color:#666;float:right;">${ts}</span>
+        </div>`;
+      }).join('');
+    });
+}
+
+// -- Confidence color --
 function confidenceColor(val) {
   if (val >= 0.7) return '#4caf50';
   if (val >= 0.5) return '#ff9800';
   return '#f44336';
 }
 
+// -- Evidence Drawer --
 function renderEvidence(conclusionData) {
   const c = conclusionData.conclusion;
   const items = conclusionData.items || [];
@@ -122,7 +199,6 @@ function renderEvidence(conclusionData) {
   const confPct = (c.confidence * 100).toFixed(0);
   const confColor = confidenceColor(c.confidence);
 
-  // Compute confidence breakdown
   const itemConfs = items.map(i => {
     const a = safeJson(i.analysis) || {};
     return a.confidence || 'medium';
@@ -144,7 +220,13 @@ function renderEvidence(conclusionData) {
     <p class="meta">确认: ${c.user_confirmation || '未标记'}</p>
   `;
 
-  // Confidence trend
+  if (conclusionData.counter_evidence) {
+    html += `<div style="margin:8px 0;padding:8px 12px;background:#2a1a1a;border-radius:6px;border-left:4px solid #f44336;">
+      <strong style="color:#f44336;">反对意见</strong>
+      <div style="margin-top:4px;color:#ccc;">${conclusionData.counter_evidence}</div>
+    </div>`;
+  }
+
   if (versions.length > 1) {
     const trendValues = versions.map(v => (v.confidence * 100).toFixed(0));
     html += `<div style="margin-top:4px;font-size:13px;color:#aaa;">`
@@ -154,17 +236,13 @@ function renderEvidence(conclusionData) {
     html += `<details style="margin-top:12px;" open><summary>版本历史 (${versions.length})</summary>`;
     versions.forEach(v => {
       const d = new Date(v.created_at).toLocaleDateString();
-      const desc = v.change_description || '';
       html += `<div class="version-line">`;
       html += `<strong>v${v.version} [${d}]</strong> ${(v.confidence * 100).toFixed(0)}%`;
-      if (desc) html += `<div style="margin-top:4px;color:#bbb;line-height:1.5;">${desc}</div>`;
       html += `</div>`;
     });
     html += `</details>`;
   }
 
-  // Supporting evidence
-  const relatedItems = conclusionData.related_items || [];
   html += `<h4 style="margin-top:20px;border-top:1px solid #333;padding-top:12px;">直接证据 (${items.length})</h4>`;
 
   if (items.length === 0) {
@@ -173,61 +251,35 @@ function renderEvidence(conclusionData) {
     items.forEach((item, idx) => {
       const analysis = safeJson(item.analysis) || {};
       const entities = safeJson(item.entities) || [];
-      const confidenceLabel = analysis.confidence === 'high' ? '🟢' : analysis.confidence === 'medium' ? '🟡' : '';
 
       html += `<div class="evidence-card">`;
       html += `<div class="evidence-header">`;
       html += `<strong>${idx + 1}. ${analysis.title_cn || item.title}</strong>`;
       html += ` <span class="source-tag">${item.source}</span>`;
-      if (confidenceLabel) html += ` <span>${confidenceLabel}</span>`;
       html += `</div>`;
 
       if (item.url) {
-        html += `<div><a href="${item.url}" target="_blank" class="source-url">${item.title}</a></div>`;
+        html += `<div><a href="${item.url}" target="_blank" class="source-url">查看原文</a></div>`;
       }
-
-      // LLM critical analysis
       if (analysis.summary) {
         html += `<div class="analysis-section"><strong>分析摘要:</strong> ${analysis.summary}</div>`;
       }
-
-      // Key points (source quality flags)
       if (analysis.key_points && analysis.key_points.length) {
         html += `<div class="analysis-section"><strong>关键质疑:</strong><ul>`;
         analysis.key_points.forEach(kp => { html += `<li>${kp}</li>`; });
         html += `</ul></div>`;
       }
-
-      // Implications
       if (analysis.implications) {
         html += `<div class="analysis-section"><strong>启示:</strong> ${analysis.implications}</div>`;
       }
-
-      // Entities
       if (entities.length) {
         const entLabels = entities.map(e => `${e.name} (${e.type})`).join(', ');
         html += `<div class="analysis-section"><strong>实体:</strong> ${entLabels}</div>`;
       }
-
       html += `</div>`;
     });
   }
 
-  // Related items (same domain, broader context)
-  if (relatedItems.length > 0) {
-    html += `<details style="margin-top:16px;"><summary>同领域相关文章 (${relatedItems.length})</summary>`;
-    relatedItems.forEach((item, idx) => {
-      const analysis = safeJson(item.analysis) || {};
-      html += `<div class="evidence-card" style="border-left-color:#555;">`;
-      html += `<div class="evidence-header">${idx + 1}. ${analysis.title_cn || item.title} <span class="source-tag">${item.source}</span></div>`;
-      if (analysis.summary) html += `<div class="analysis-section">${analysis.summary.slice(0, 150)}...</div>`;
-      if (item.url) html += `<div><a href="${item.url}" target="_blank" class="source-url">查看原文</a></div>`;
-      html += `</div>`;
-    });
-    html += `</details>`;
-  }
-
-  // Confirm / Challenge buttons
   html += `<div style="margin-top:20px;display:flex;gap:8px;">
     <button class="confirm-btn" onclick="confirmConclusion('${c.id}', 'confirmed')">确认 ✓</button>
     <button class="confirm-btn challenge" onclick="confirmConclusion('${c.id}', 'challenged')">质疑 ✗</button>
@@ -262,6 +314,5 @@ document.getElementById('drawer-close').addEventListener('click', () => {
   document.getElementById('drawer').classList.remove('open');
 });
 
+// Initial load: graph tab is active
 loadGraph();
-loadStream();
-loadPredictions();

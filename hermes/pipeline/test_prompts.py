@@ -153,3 +153,156 @@ def format_prompt_test_report(report: dict) -> str:
         lines.append(f"\nAll fixtures passed. Prompt changes are safe to deploy.")
 
     return "\n".join(lines)
+
+
+# -- Synthesize prompt regression tests --
+
+SYNTHESIZE_FIXTURES_DIR = FIXTURES_DIR / "synthesize"
+
+
+def load_synthesize_fixtures(limit: int | None = None) -> list[dict]:
+    fixtures = []
+    if not SYNTHESIZE_FIXTURES_DIR.is_dir():
+        return fixtures
+    for f in sorted(SYNTHESIZE_FIXTURES_DIR.glob("*.json")):
+        fixture = json.loads(f.read_text())
+        fixture["_id"] = f.stem
+        fixtures.append(fixture)
+        if limit and len(fixtures) >= limit:
+            break
+    return fixtures
+
+
+def _compare_synthesize_result(result: dict, expected: dict) -> tuple[int, list[str]]:
+    """Compare a synthesize LLM result against expected structure.
+
+    Returns (score 0-5, list of issues).
+    Checks: themes array, counter_evidence presence, connections, narrative, JSON validity.
+    """
+    score = 0
+    issues = []
+
+    if not isinstance(result, dict):
+        return 0, ["result is not a JSON object"]
+
+    themes = result.get("themes", [])
+    if isinstance(themes, list) and len(themes) > 0:
+        score += 1
+    else:
+        issues.append("themes: must be a non-empty array")
+
+    min_themes = expected.get("min_themes", 1)
+    if isinstance(themes, list) and len(themes) >= min_themes:
+        score += 1
+    else:
+        issues.append(f"theme_count: expected at least {min_themes}, got {len(themes) if isinstance(themes, list) else 0}")
+
+    if expected.get("has_counter_evidence", True):
+        all_have_counter = all(
+            isinstance(t.get("counter_evidence"), str) and len(t.get("counter_evidence", "")) > 0
+            for t in (themes if isinstance(themes, list) else [])
+        )
+        if all_have_counter:
+            score += 1
+        else:
+            issues.append("counter_evidence: all themes must have non-empty counter_evidence")
+
+    connections = result.get("connections", [])
+    if expected.get("has_connections", True):
+        if isinstance(connections, list) and len(connections) > 0:
+            score += 1
+        else:
+            issues.append("connections: must be a non-empty array")
+
+    narrative = result.get("overall_narrative", "")
+    if expected.get("has_narrative", True):
+        if isinstance(narrative, str) and len(narrative) > 0:
+            score += 1
+        else:
+            issues.append("overall_narrative: must be a non-empty string")
+
+    return score, issues
+
+
+def run_synthesize_tests(client, limit: int | None = None, threshold: int = 4) -> dict:
+    """Run synthesize prompt regression tests against fixtures."""
+    from hermes.pipeline.synthesize import _SYNTHESIZE_PROMPT
+
+    fixtures = load_synthesize_fixtures(limit=limit)
+    if not fixtures:
+        return {"passed": 0, "total": 0, "results": []}
+
+    results = []
+    for fix in fixtures:
+        # Build user message the same way synthesize_items does
+        summaries = []
+        for item in fix["items"]:
+            analysis = item.get("analysis", {})
+            title = analysis.get("title_cn", item.get("title", "Untitled"))
+            summary = analysis.get("summary", "")[:200]
+            source = item.get("source", "Unknown")
+            short_id = item["id"][:12]
+            summaries.append(
+                f"[{short_id}] {title} (来源:{source})\n{summary}"
+            )
+
+        prompt = _SYNTHESIZE_PROMPT.format(domain_list=fix["domain_list"])
+        user_msg = prompt + "\n\n---\n" + "\n---\n".join(summaries)
+
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": user_msg}],
+                temperature=0.3,
+                max_tokens=4000,
+            )
+            raw = response.choices[0].message.content.strip()
+            result = _parse_response(raw)
+        except Exception:
+            result = None
+
+        if result is None:
+            results.append({
+                "fixture": fix["_id"],
+                "score": 0,
+                "issues": ["LLM call failed or JSON parse error"],
+            })
+            continue
+
+        expected = fix.get("expected", {})
+        score, issues = _compare_synthesize_result(result, expected)
+        theme_count = len(result.get("themes", []))
+        results.append({
+            "fixture": fix["_id"],
+            "score": score,
+            "issues": issues,
+            "theme_count": theme_count,
+        })
+
+    passed = sum(1 for r in results if r["score"] >= threshold)
+    return {"passed": passed, "total": len(results), "results": results}
+
+
+def format_synthesize_test_report(report: dict) -> str:
+    lines = []
+    lines.append(f"\n{'=' * 60}")
+    lines.append("SYNTHESIZE PROMPT REGRESSION TEST REPORT")
+    lines.append(f"{'=' * 60}")
+    lines.append(f"Passed: {report['passed']}/{report['total']}")
+
+    for r in report["results"]:
+        status = "PASS" if r["score"] >= 4 else "FAIL"
+        bar = "=" * r["score"] + "-" * (5 - r["score"])
+        lines.append(f"\n  [{status}] {r['fixture']}")
+        lines.append(f"  Score: [{bar}] {r['score']}/5")
+        lines.append(f"  Themes: {r.get('theme_count', '?')}")
+        if r["issues"]:
+            for issue in r["issues"]:
+                lines.append(f"  -> {issue}")
+
+    if report["passed"] < report["total"]:
+        lines.append(f"\n!!! {report['total'] - report['passed']} fixture(s) below threshold. Review prompt changes.")
+    else:
+        lines.append(f"\nAll fixtures passed. Prompt changes are safe to deploy.")
+
+    return "\n".join(lines)

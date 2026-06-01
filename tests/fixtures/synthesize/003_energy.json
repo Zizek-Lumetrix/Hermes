@@ -1,0 +1,67 @@
+{
+  "domain_list": "能源安全、地缘政治、中东局势",
+  "items": [
+    {
+      "id": "vwx345yza678",
+      "title": "OPEC+ Extends Production Cuts Through 2026 Amid Slowing Chinese Demand",
+      "source": "Reuters",
+      "analysis": {
+        "title_cn": "OPEC+将减产延长至2026年因中国需求放缓",
+        "summary": "OPEC+决定将原油减产协议延长至2026年底，中国石油需求增速降至三年最低",
+        "key_points": ["中国需求放缓是结构性而非周期性的", "OPEC+内部对减产配额存在分歧"],
+        "implications": "石油市场的定价权正在从OPEC+向需求侧转移，长期油价可能承压",
+        "confidence": "high"
+      },
+      "exploit_score": 7,
+      "surprise_score": 0.4
+    },
+    {
+      "id": "yza901bcd234",
+      "title": "U.S. Shale Production Hits Record 14 Million Barrels Per Day",
+      "source": "EIA",
+      "analysis": {
+        "title_cn": "美国页岩油产量创纪录达到每日1400万桶",
+        "summary": "美国页岩油产量首次突破每日1400万桶，尽管钻井平台数量下降但效率大幅提升",
+        "key_points": ["效率提升抵消了钻井数量下降", "美国能源独立的战略意义"],
+        "implications": "美国在全球能源市场中的议价能力进一步增强，可能影响中东地缘政治格局",
+        "confidence": "high"
+      },
+      "exploit_score": 6,
+      "surprise_score": 0.6
+    },
+    {
+      "id": "bcd567efg890",
+      "title": "Permian Basin Natural Gas Flaring Reaches Three-Year Low",
+      "source": "Bloomberg",
+      "analysis": {
+        "title_cn": "二叠纪盆地天然气燃放量降至三年最低",
+        "summary": "二叠纪盆地的天然气燃放量降至三年最低，但环保组织强调实际排放数据仍被低估",
+        "key_points": ["燃放减少是监管压力而非市场驱动", "排放数据透明度仍存疑"],
+        "implications": "化石燃料行业的环境表现正在改善，但速度和透明度仍面临质疑",
+        "confidence": "medium"
+      },
+      "exploit_score": 4,
+      "surprise_score": 0.7
+    },
+    {
+      "id": "efg123hij456",
+      "title": "Saudi Arabia Pivots Sovereign Wealth Fund Away from Oil into AI Infrastructure",
+      "source": "Financial Times",
+      "analysis": {
+        "title_cn": "沙特主权基金从石油转向AI基础设施投资",
+        "summary": "沙特PIF宣布将500亿美元从石油相关投资转向AI数据中心和芯片制造",
+        "key_points": ["沙特战略转型加速", "AI基础设施成为新的主权投资方向"],
+        "implications": "石油出口国正在为后石油时代做准备，AI成为新的地缘政治竞争领域",
+        "confidence": "high"
+      },
+      "exploit_score": 8,
+      "surprise_score": 0.9
+    }
+  ],
+  "expected": {
+    "min_themes": 1,
+    "has_counter_evidence": true,
+    "has_connections": true,
+    "has_narrative": true
+  }
+}

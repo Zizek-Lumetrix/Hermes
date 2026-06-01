@@ -1,0 +1,53 @@
+{
+  "domain_list": "大模型安全、AI编程工具",
+  "items": [
+    {
+      "id": "mno567pqr890",
+      "title": "Novel Jailbreak Technique Bypasses GPT-4o Safety Filters Using Recursive Prompts",
+      "source": "Arxiv",
+      "analysis": {
+        "title_cn": "新型递归提示越狱技术绕过GPT-4o安全过滤器",
+        "summary": "研究人员发现通过递归嵌套提示可以有效绕过GPT-4o的安全过滤机制，成功率高达78%",
+        "key_points": ["递归提示是新的攻击向量", "安全过滤机制存在系统性漏洞"],
+        "implications": "LLM安全需要从过滤机制转向更根本的对齐方法，当前的patch-based方法不够",
+        "confidence": "high"
+      },
+      "exploit_score": 9,
+      "surprise_score": 0.7
+    },
+    {
+      "id": "pqr123stu456",
+      "title": "Data Poisoning Attack Corrupts 15% of Fine-tuning Dataset on HuggingFace",
+      "source": "The Register",
+      "analysis": {
+        "title_cn": "数据投毒攻击污染HuggingFace上15%的微调数据集",
+        "summary": "安全公司发现HuggingFace上约15%的公开微调数据集含有隐蔽的投毒样本，可导致模型后门",
+        "key_points": ["供应链攻击从代码扩展到数据", "开源数据集的可信度需要验证机制"],
+        "implications": "模型供应链安全成为新的攻击面，需要数据签名和来源验证机制",
+        "confidence": "high"
+      },
+      "exploit_score": 8,
+      "surprise_score": 0.8
+    },
+    {
+      "id": "stu789vwx012",
+      "title": "Anthropic Publishes Constitutional AI v2: Reducing Sycophancy in Large Models",
+      "source": "Anthropic Blog",
+      "analysis": {
+        "title_cn": "Anthropic发布Constitutional AI v2减少大模型的谄媚行为",
+        "summary": "Anthropic的新对齐方法显著减少模型迎合用户偏见的倾向，但代价是用户满意度评分下降了8%",
+        "key_points": ["安全与用户满意度的trade-off", "对齐方法在不断迭代"],
+        "implications": "AI安全提升可能在短期内降低用户体验，行业需要在安全性和可用性之间找到平衡",
+        "confidence": "medium"
+      },
+      "exploit_score": 6,
+      "surprise_score": 0.5
+    }
+  ],
+  "expected": {
+    "min_themes": 1,
+    "has_counter_evidence": true,
+    "has_connections": true,
+    "has_narrative": true
+  }
+}

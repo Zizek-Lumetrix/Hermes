@@ -14,7 +14,16 @@ dependencies = [
     "pgvector>=0.3",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]
 hermes = "hermes.__main__:main"
+
+[tool.setuptools.packages.find]
+exclude = ["migrations*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

@@ -3,6 +3,9 @@ import re
 from dataclasses import dataclass
 
 import yaml
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @dataclass

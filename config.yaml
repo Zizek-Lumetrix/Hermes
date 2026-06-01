@@ -6,37 +6,37 @@ sources:
   rss:
     - url: https://news.ycombinator.com/rss
       name: Hacker News
-      enabled: false
+      enabled: true
     - url: https://simonwillison.net/atom/everything/
       name: Simon Willison
-      enabled: false
+      enabled: true
     - url: https://rss.arxiv.org/rss/cs.AI
       name: ArXiv cs.AI
-      enabled: false
+      enabled: true
     - url: https://rss.arxiv.org/rss/cs.CR
       name: ArXiv cs.CR
-      enabled: false
+      enabled: true
     - url: https://www.jiqizhixin.com/rss
       name: 机器之心
-      enabled: false
+      enabled: true
     - url: https://www.qbitai.com/feed
       name: 量子位
-      enabled: false
+      enabled: true
     - url: https://techcrunch.com/feed/
       name: TechCrunch
-      enabled: false
+      enabled: true
     - url: https://feeds.bbci.co.uk/news/rss.xml
       name: BBC News
       enabled: true
     - url: https://www.theguardian.com/world/rss
       name: The Guardian
-      enabled: false
+      enabled: true
     - url: https://www.aljazeera.com/xml/rss/middle-east.xml
       name: Al Jazeera Middle East
       enabled: true
     - url: https://oilprice.com/rss
       name: OilPrice
-      enabled: false
+      enabled: true
     - url: https://www.hellenicshippingnews.com/feed/
       name: Hellenic Shipping News
       enabled: true
@@ -57,7 +57,7 @@ domains:
   - 地缘政治
 
 database:
-  url: postgresql://localhost:5432/hermes
+  url: postgresql://hermes:hermes@localhost:5433/hermes
 
 email:
   smtp_host: smtp.gmail.com
