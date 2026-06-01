@@ -1,0 +1,1 @@
+ALTER TABLE run_log ADD COLUMN IF NOT EXISTS trigger_type TEXT DEFAULT 'manual';

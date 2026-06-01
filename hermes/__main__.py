@@ -28,10 +28,10 @@ def main():
 
     if args.command == "run":
         from hermes.pipeline.run import run
-        run(args.config)
+        run(args.config, trigger_type="manual")
     elif args.command == "cron":
         from hermes.pipeline.run import run
-        run(args.config)
+        run(args.config, trigger_type="cron")
     elif args.command == "status":
         from hermes.pipeline.run import status
         status()

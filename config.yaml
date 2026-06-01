@@ -1,7 +1,3 @@
-obsidian:
-  vault_path: ~/Documents/Obsidian Vault
-  brief_folder: Intel Briefs
-
 sources:
   rss:
     - url: https://news.ycombinator.com/rss

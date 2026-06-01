@@ -166,11 +166,12 @@ class Database:
         item_count: int = 0,
         duration_ms: int = 0,
         error: str | None = None,
+        trigger_type: str = "manual",
     ) -> None:
         self.execute(
-            "INSERT INTO run_log (run_id, stage, status, item_count, duration_ms, error) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (run_id, stage, status, item_count, duration_ms, error),
+            "INSERT INTO run_log (run_id, stage, status, item_count, duration_ms, error, trigger_type) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (run_id, stage, status, item_count, duration_ms, error, trigger_type),
         )
         self._commit()
 

@@ -17,8 +17,6 @@ class RSSSource:
 
 @dataclass
 class Config:
-    obsidian_vault_path: str
-    brief_folder: str
     rss_sources: list[RSSSource]
     llm_api_key: str
     llm_base_url: str
@@ -52,7 +50,6 @@ def load_config(path: str | None = None) -> Config:
         raw = yaml.safe_load(f)
 
     llm = raw["llm"]
-    obsidian = raw["obsidian"]
     notify = raw.get("notify", {})
     db_cfg = raw.get("database", {})
     email_cfg = raw.get("email", {})
@@ -62,8 +59,6 @@ def load_config(path: str | None = None) -> Config:
     rss_sources = [RSSSource(**s) for s in rss_raw]
 
     return Config(
-        obsidian_vault_path=os.path.expanduser(obsidian["vault_path"]),
-        brief_folder=obsidian["brief_folder"],
         rss_sources=rss_sources,
         llm_api_key=_substitute_env(llm["api_key"]),
         llm_base_url=llm["base_url"],

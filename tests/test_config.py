@@ -7,9 +7,6 @@ from hermes.config import load_config
 def test_load_config_with_pg_and_email(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text("""
-obsidian:
-  vault_path: ~/vault
-  brief_folder: Briefs
 sources:
   rss:
     - url: https://example.com/feed.xml
@@ -42,9 +39,6 @@ notify:
 
 def test_load_config_parses_yaml():
     yaml = """
-obsidian:
-  vault_path: ~/test-vault
-  brief_folder: Briefs
 sources:
   rss:
     - url: https://foo.com/rss
@@ -64,8 +58,6 @@ notify:
 
     try:
         config = load_config(path)
-        assert config.obsidian_vault_path == os.path.expanduser("~/test-vault")
-        assert config.brief_folder == "Briefs"
         assert len(config.rss_sources) == 1
         assert config.rss_sources[0].url == "https://foo.com/rss"
         assert config.rss_sources[0].name == "Foo Blog"
@@ -81,9 +73,6 @@ notify:
 def test_load_config_substitutes_env_vars(monkeypatch):
     monkeypatch.setenv("TEST_KEY", "secret-123")
     yaml = """
-obsidian:
-  vault_path: /tmp/v
-  brief_folder: B
 sources:
   rss: []
 llm:

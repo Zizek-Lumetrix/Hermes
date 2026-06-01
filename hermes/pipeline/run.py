@@ -11,7 +11,6 @@ from hermes.config import load_config
 from hermes.db import Database
 from hermes.embeddings import StreamingClusterer
 from hermes.ingestors.rss import fetch_feed, RawItem
-from hermes.ingestors.obsidian import read_vault
 from hermes.pipeline.dedup import dedup_items
 from hermes.pipeline.enrich import enrich_items
 from hermes.pipeline.assess import assess_items
@@ -19,7 +18,7 @@ from hermes.pipeline.synthesize import synthesize_items, match_conclusion
 from hermes.pipeline.backtest import backtest_predictions
 
 
-def run(config_path: str | None = None) -> None:
+def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
     config = load_config(config_path)
     db = Database(config.db_url)
     run_id = str(uuid.uuid4())
@@ -36,10 +35,7 @@ def run(config_path: str | None = None) -> None:
             items = fetch_feed(src.url, src.name)
             all_items.extend(items)
         except Exception as e:
-            db.log_run(run_id, f"ingest:rss:{src.name}", "error", 0, 0, str(e))
-
-    vault_items = read_vault(config.obsidian_vault_path)
-    all_items.extend(vault_items)
+            db.log_run(run_id, f"ingest:rss:{src.name}", "error", 0, 0, str(e), trigger_type=trigger_type)
 
     for item in all_items:
         db.insert_item(
@@ -48,10 +44,10 @@ def run(config_path: str | None = None) -> None:
         )
 
     elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "ingest", "ok", len(all_items), elapsed)
+    db.log_run(run_id, "ingest", "ok", len(all_items), elapsed, trigger_type=trigger_type)
 
     if not all_items:
-        _finish(db, run_id)
+        _finish(db, run_id, trigger_type)
         return
 
     # Stage 2: Enrich
@@ -78,10 +74,10 @@ def run(config_path: str | None = None) -> None:
         )
 
     elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "enrich", "ok", len(enriched), elapsed)
+    db.log_run(run_id, "enrich", "ok", len(enriched), elapsed, trigger_type=trigger_type)
 
     if not enriched:
-        _finish(db, run_id)
+        _finish(db, run_id, trigger_type)
         return
 
     # Stage 3: Dedup
@@ -101,7 +97,7 @@ def run(config_path: str | None = None) -> None:
         db.update_item(item.id, fingerprint=item.simhash, cluster_id=item.cluster_id)
 
     elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "dedup", "ok", len(deduped), elapsed)
+    db.log_run(run_id, "dedup", "ok", len(deduped), elapsed, trigger_type=trigger_type)
 
     # Stage 4: Assess (unified prefilter + analyze + postfilter)
     t0 = time.monotonic()
@@ -136,10 +132,10 @@ def run(config_path: str | None = None) -> None:
 
     elapsed = int((time.monotonic() - t0) * 1000)
     analyzed_count = len(assessed)
-    db.log_run(run_id, "assess", "ok", analyzed_count, elapsed)
+    db.log_run(run_id, "assess", "ok", analyzed_count, elapsed, trigger_type=trigger_type)
 
     if not assessed:
-        _finish(db, run_id)
+        _finish(db, run_id, trigger_type)
         return
 
     # Stage 4.5: Compute surprise scores
@@ -181,7 +177,7 @@ def run(config_path: str | None = None) -> None:
         db.update_item(item["id"], surprise_score=surprise)
 
     elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "surprise", "ok", len(assessed), elapsed)
+    db.log_run(run_id, "surprise", "ok", len(assessed), elapsed, trigger_type=trigger_type)
 
     # Stage 5: Synthesize
     t0 = time.monotonic()
@@ -281,7 +277,7 @@ def run(config_path: str | None = None) -> None:
 
     elapsed = int((time.monotonic() - t0) * 1000)
     theme_count = len(synthesis.get("themes", [])) if synthesis else 0
-    db.log_run(run_id, "synthesize", "ok", theme_count, elapsed)
+    db.log_run(run_id, "synthesize", "ok", theme_count, elapsed, trigger_type=trigger_type)
 
     # Stage 6: Backtest
     t0 = time.monotonic()
@@ -291,15 +287,16 @@ def run(config_path: str | None = None) -> None:
         for result in backtest_results:
             db.update_prediction_result(result["id"], result["result"], result["reason"])
     elapsed = int((time.monotonic() - t0) * 1000)
-    db.log_run(run_id, "backtest", "ok", len(pending), elapsed)
+    db.log_run(run_id, "backtest", "ok", len(pending), elapsed, trigger_type=trigger_type)
 
-    _finish(db, run_id)
+    _finish(db, run_id, trigger_type)
 
 
-def _finish(db: Database, run_id: str) -> None:
-    logs = db.get_run_logs(run_id)
-    from hermes.notify import format_summary
-    print(format_summary(logs))
+def _finish(db: Database, run_id: str, trigger_type: str = "manual") -> None:
+    if trigger_type != "cron":
+        logs = db.get_run_logs(run_id)
+        from hermes.notify import format_summary
+        print(format_summary(logs))
 
 
 def status() -> None:
