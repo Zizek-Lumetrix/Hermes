@@ -286,12 +286,23 @@ function showToast(msg, type) {
 // -- Knowledge Graph --
 let graphLoaded = false;
 let graphLoading = false;
+let graphAllData = null;
+let graphCategory = '';
 let graphSimulation = null;
-let graphNodeData = null;
 let graphSvg = null;
+let graphG = null;
+
+const CATEGORY_COLORS = {
+  '人工智能': '#4caf50',
+  '科技与安全': '#00bcd4',
+  '国际与地缘': '#f44336',
+  '能源与气候': '#ff9800',
+  '经济与产业': '#ffc107',
+  '社会与治理': '#9c27b0',
+};
 
 function updateGraphNodeStyles() {
-  if (!graphSvg || !graphNodeData) return;
+  if (!graphSvg) return;
   graphSvg.selectAll('circle.nodes')
     .attr('stroke', d => {
       if (d.user_confirmation === 'confirmed') return '#4caf50';
@@ -301,157 +312,212 @@ function updateGraphNodeStyles() {
     .attr('stroke-width', d => d.user_confirmation ? 3 : 0);
 }
 
-function loadGraph() {
-  if (graphLoaded || graphLoading) return;
-  graphLoading = true;
+function renderGraphCategoryFilter(categories) {
+  const container = document.getElementById('graph-category-filter');
+  const allActive = !graphCategory;
+  let html = '<span class="domain-pill' + (allActive ? ' active' : '') + '" data-cat="">All<span class="pill-count">' + (graphAllData ? graphAllData.nodes.length : 0) + '</span></span>';
 
+  const counts = {};
+  if (graphAllData) {
+    graphAllData.nodes.forEach(n => {
+      const c = n.category || '未分类';
+      counts[c] = (counts[c] || 0) + 1;
+    });
+  }
+
+  const order = ['人工智能', '科技与安全', '国际与地缘', '能源与气候', '经济与产业', '社会与治理'];
+  const sorted = Object.entries(counts).sort((a, b) => {
+    const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1; if (ib >= 0) return 1;
+    return b[1] - a[1];
+  });
+
+  sorted.forEach(([cat, cnt]) => {
+    const active = graphCategory === cat;
+    const color = CATEGORY_COLORS[cat] || '#888';
+    html += '<span class="domain-pill' + (active ? ' active' : '') + '" data-cat="' + cat + '" style="' + (active ? 'border-color:' + color + ';color:' + color + ';' : '') + '">' + cat + '<span class="pill-count">' + cnt + '</span></span>';
+  });
+
+  container.innerHTML = html;
+  container.querySelectorAll('.domain-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      graphCategory = pill.dataset.cat || '';
+      renderGraphCategoryFilter();
+      renderGraph();
+    });
+  });
+}
+
+function renderGraph() {
+  if (!graphAllData) return;
   const container = document.getElementById('graph-container');
   const width = container.clientWidth;
   const height = container.clientHeight || 600;
 
+  // Filter nodes by category
+  let nodes = graphAllData.nodes;
+  if (graphCategory) {
+    nodes = nodes.filter(n => (n.category || '未分类') === graphCategory);
+  }
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const edges = graphAllData.edges.filter(e =>
+    nodeIds.has(typeof e.source === 'object' ? e.source.id : e.source) &&
+    nodeIds.has(typeof e.target === 'object' ? e.target.id : e.target)
+  );
+
   container.innerHTML = '';
+  if (graphSimulation) { graphSimulation.stop(); graphSimulation = null; }
 
   const svg = d3.select('#graph-container')
     .append('svg')
     .attr('width', width)
     .attr('height', height);
+  graphSvg = svg;
 
   const g = svg.append('g');
+  graphG = g;
   svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', (e) => g.attr('transform', e.transform)));
 
-  const color = d3.scaleOrdinal()
-    .domain(['AI编程工具', '大模型安全', '网络安全', '科技产业', '中东局势', '能源安全', '气候环境', '经济金融', '地缘政治'])
-    .range(['#4caf50', '#2196f3', '#00bcd4', '#e91e63', '#f44336', '#ff9800', '#8bc34a', '#ffc107', '#9c27b0']);
+  if (nodes.length === 0) {
+    svg.append('text').attr('x', width/2).attr('y', height/2)
+      .attr('text-anchor', 'middle').attr('fill', '#888')
+      .text('No conclusions in this category.');
+    return;
+  }
+
+  const color = d => CATEGORY_COLORS[d.category] || '#888';
+
+  // Build domain centers within category
+  const domains = [...new Set(nodes.map(n => n.domain).filter(Boolean))];
+  const domainCenters = {};
+  const margin = 120;
+  const usableW = width - margin * 2;
+  const usableH = height - margin * 2;
+  const cols = Math.ceil(Math.sqrt(domains.length || 1));
+  const rows = Math.ceil((domains.length || 1) / cols);
+  domains.forEach((d, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    domainCenters[d] = {
+      x: margin + usableW * (col + 0.5) / cols,
+      y: margin + usableH * (row + 0.5) / rows,
+    };
+  });
+
+  // Legend
+  const domainColors = d3.scaleOrdinal(d3.schemeCategory10);
+  const legendHtml = domains.map(d =>
+    '<div class="legend-item"><span class="legend-swatch" style="background:' + domainColors(d) + ';"></span>' + d + '</div>'
+  ).join('');
+  const legendDiv = document.createElement('div');
+  legendDiv.id = 'graph-legend';
+  legendDiv.innerHTML = legendHtml;
+  container.appendChild(legendDiv);
+
+  // Info
+  svg.append('text').attr('x', 10).attr('y', 18)
+    .attr('fill', '#888').attr('font-size', 12)
+    .text(nodes.length + ' conclusions, ' + edges.length + ' links');
+
+  // Resolve edges
+  const nodeById = {};
+  nodes.forEach(n => { nodeById[n.id] = n; });
+  const validEdges = edges.map(e => ({
+    ...e,
+    source: nodeById[e.source] || e.source,
+    target: nodeById[e.target] || e.target,
+  })).filter(e => typeof e.source === 'object' && typeof e.target === 'object');
+
+  // Edges
+  const link = g.selectAll('line.link')
+    .data(validEdges)
+    .join('line')
+    .attr('class', 'links')
+    .attr('stroke', '#555')
+    .attr('stroke-width', d => 1 + d.strength * 2)
+    .attr('opacity', 0.4);
+  link.append('title').text(d => '关联度 ' + (d.strength * 100).toFixed(0) + '%');
+
+  // Nodes
+  const node = g.selectAll('.nodes')
+    .data(nodes)
+    .join('circle')
+    .attr('class', 'nodes')
+    .attr('r', d => 7 + (d.confidence || 0.5) * 12)
+    .attr('fill', d => domainColors(d.domain || 'other'))
+    .attr('stroke', '#fff')
+    .attr('stroke-width', 0.5)
+    .attr('opacity', 0.9)
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  node.on('click', (e, d) => openDrawer(d.id));
+  node.append('title').text(d => d.label);
+
+  // Labels
+  const labels = g.selectAll('.node-label')
+    .data(nodes)
+    .join('text')
+    .attr('class', 'node-label')
+    .text(d => d.label.length > 30 ? d.label.slice(0, 28) + '...' : d.label)
+    .attr('font-size', 10)
+    .attr('dx', 13)
+    .attr('dy', 3);
+
+  const simulation = d3.forceSimulation(nodes)
+    .force('charge', d3.forceManyBody().strength(-400))
+    .force('collision', d3.forceCollide(d => 14 + (d.confidence || 0.5) * 12))
+    .force('link', d3.forceLink(validEdges).distance(100).strength(0.2))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+    .force('x', d3.forceX(d => {
+      const c = domainCenters[d.domain];
+      return c ? c.x : width / 2;
+    }).strength(0.12))
+    .force('y', d3.forceY(d => {
+      const c = domainCenters[d.domain];
+      return c ? c.y : height / 2;
+    }).strength(0.12))
+    .on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('cx', d => d.x).attr('cy', d => d.y);
+      labels.attr('x', d => d.x).attr('y', d => d.y);
+    });
+
+  simulation.alpha(1).restart();
+  graphSimulation = simulation;
+  updateGraphNodeStyles();
+}
+
+function loadGraph() {
+  if (graphLoaded || graphLoading) return;
+  graphLoading = true;
 
   fetch('/api/graph')
     .then(r => r.json())
     .then(data => {
+      graphLoaded = true;
+      graphLoading = false;
       if (!data.nodes || data.nodes.length === 0) {
-        svg.append('text').attr('x', width/2).attr('y', height/2)
-          .attr('text-anchor', 'middle').attr('fill', '#888')
-          .text('No conclusions yet. Run the pipeline to build your knowledge graph.');
-        graphLoaded = true;
-        graphLoading = false;
+        document.getElementById('graph-category-filter').innerHTML = '<span style="color:#888;font-size:12px;">No conclusions yet.</span>';
+        document.getElementById('graph-container').innerHTML = '<div style="padding:40px;text-align:center;color:#888;">Run the pipeline to build your knowledge graph.</div>';
         return;
       }
 
-      graphLoaded = true;
-      graphLoading = false;
-      graphNodeData = data.nodes;
-      graphSvg = svg;
+      graphAllData = data;
 
-      // Pre-resolve edge node references
-      const nodeById = {};
-      data.nodes.forEach(n => { nodeById[n.id] = n; });
-      const resolvedEdges = data.edges.map(e => ({
-        ...e,
-        source: nodeById[e.source] || e.source,
-        target: nodeById[e.target] || e.target,
-      }));
-      const validEdges = resolvedEdges.filter(e =>
-        typeof e.source === 'object' && typeof e.target === 'object'
-      );
-
-      // Build domain → center position map for grouping forces
-      const domains = data.domains || [];
-      const domainCenters = {};
-      const margin = 140;
-      const usableW = width - margin * 2;
-      const usableH = height - margin * 2;
-      const cols = Math.ceil(Math.sqrt(domains.length));
-      const rows = Math.ceil(domains.length / cols);
-      domains.forEach((d, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        domainCenters[d] = {
-          x: margin + usableW * (col + 0.5) / cols,
-          y: margin + usableH * (row + 0.5) / rows,
-        };
-      });
-
-      // Add legend
-      const legendHtml = domains.map(d =>
-        `<div class="legend-item"><span class="legend-swatch" style="background:${color(d)};"></span>${d}</div>`
-      ).join('');
-      const legendDiv = document.createElement('div');
-      legendDiv.id = 'graph-legend';
-      legendDiv.innerHTML = legendHtml;
-      container.appendChild(legendDiv);
-
-      // Info text
-      svg.append('text').attr('x', 10).attr('y', 18)
-        .attr('fill', '#888').attr('font-size', 12)
-        .text(data.nodes.length + ' conclusions, ' + validEdges.length + ' cross-domain links');
-
-      // Cross-domain edges only
-      const crossLink = g.selectAll('line.cross')
-        .data(validEdges)
-        .join('line')
-        .attr('class', 'links cross')
-        .attr('stroke', '#ff9800')
-        .attr('stroke-width', d => 1 + d.strength * 3)
-        .attr('stroke-dasharray', '6,3')
-        .attr('opacity', 0.5);
-      crossLink.append('title').text(d => '语义关联 ' + (d.strength * 100).toFixed(0) + '%');
-
-      const node = g.selectAll('.nodes')
-        .data(data.nodes)
-        .join('circle')
-        .attr('class', 'nodes')
-        .attr('r', d => 8 + (d.confidence || 0.5) * 12)
-        .attr('fill', d => color(d.domain || 'other'))
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 0.5)
-        .attr('opacity', 0.9)
-        .call(d3.drag()
-          .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-          .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-          .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
-
-      node.on('click', (e, d) => openDrawer(d.id));
-      node.append('title').text(d => d.label);
-
-      const labels = g.selectAll('.node-label')
-        .data(data.nodes)
-        .join('text')
-        .attr('class', 'node-label')
-        .text(d => d.label.length > 35 ? d.label.slice(0, 33) + '...' : d.label)
-        .attr('font-size', 11)
-        .attr('dx', 14)
-        .attr('dy', 4);
-
-      const simulation = d3.forceSimulation(data.nodes)
-        .force('charge', d3.forceManyBody().strength(-500))
-        .force('collision', d3.forceCollide(d => 16 + (d.confidence || 0.5) * 14))
-        .force('link', d3.forceLink(validEdges).distance(120).strength(0.3))
-        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-        .force('x', d3.forceX(d => {
-          const c = domainCenters[d.domain];
-          return c ? c.x : width / 2;
-        }).strength(0.15))
-        .force('y', d3.forceY(d => {
-          const c = domainCenters[d.domain];
-          return c ? c.y : height / 2;
-        }).strength(0.15))
-        .on('tick', () => {
-          crossLink.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-              .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-          node.attr('cx', d => d.x).attr('cy', d => d.y);
-          labels.attr('x', d => d.x).attr('y', d => d.y);
-        });
-
-      simulation.alpha(1).restart();
-      graphSimulation = simulation;
-      updateGraphNodeStyles();
+      // Collect categories from nodes
+      const catSet = new Set();
+      data.nodes.forEach(n => { if (n.category) catSet.add(n.category); });
+      const categories = [...catSet];
+      renderGraphCategoryFilter(categories);
+      renderGraph();
     })
     .catch((err) => {
       console.error('Graph load error:', err);
-      svg.append('text').attr('x', width/2).attr('y', height/2)
-        .attr('text-anchor', 'middle').attr('fill', '#f44336')
-        .text('数据库连接失败，请检查数据库是否运行');
-      svg.append('text').attr('x', width/2).attr('y', height/2 + 24)
-        .attr('text-anchor', 'middle').attr('fill', '#888').attr('font-size', 12)
-        .text(err.message || '');
+      document.getElementById('graph-container').innerHTML = '<div style="padding:40px;text-align:center;color:#f44336;">数据库连接失败</div>';
       graphLoading = false;
     });
 }
