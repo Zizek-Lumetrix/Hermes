@@ -746,7 +746,15 @@ function renderEvidence(conclusionData) {
         html += `<div><a href="${item.url}" target="_blank" class="source-url">查看原文</a></div>`;
       }
       if (analysis.summary) {
-        html += `<div class="analysis-section">${analysis.summary.slice(0, 150)}</div>`;
+        html += `<div class="analysis-section"><strong>分析摘要:</strong> ${analysis.summary}</div>`;
+      }
+      if (analysis.key_points && analysis.key_points.length) {
+        html += `<div class="analysis-section"><strong>关键质疑:</strong><ul>`;
+        analysis.key_points.forEach(kp => { html += `<li>${kp}</li>`; });
+        html += `</ul></div>`;
+      }
+      if (analysis.implications) {
+        html += `<div class="analysis-section"><strong>启示:</strong> ${analysis.implications}</div>`;
       }
       html += `</div>`;
     });
