@@ -176,9 +176,11 @@ def load_synthesize_fixtures(limit: int | None = None) -> list[dict]:
 def _compare_synthesize_result(result: dict, expected: dict) -> tuple[int, list[str]]:
     """Compare a synthesize LLM result against expected structure.
 
-    Returns (score 0-5, list of issues).
-    Checks: themes array, counter_evidence presence, connections, narrative, JSON validity.
+    Returns (score 0-6, list of issues).
     """
+
+    VALID_TYPES = {"predictive", "evaluative", "descriptive"}
+
     score = 0
     issues = []
 
@@ -206,6 +208,21 @@ def _compare_synthesize_result(result: dict, expected: dict) -> tuple[int, list[
             score += 1
         else:
             issues.append("counter_evidence: all themes must have non-empty counter_evidence")
+
+    if expected.get("has_conclusion_type", True):
+        all_have_ctype = all(
+            t.get("conclusion_type") in VALID_TYPES
+            for t in (themes if isinstance(themes, list) else [])
+        )
+        if all_have_ctype:
+            score += 1
+        else:
+            invalid = [
+                f"{t.get('title', '?')}={t.get('conclusion_type', 'missing')}"
+                for t in (themes if isinstance(themes, list) else [])
+                if t.get("conclusion_type") not in VALID_TYPES
+            ]
+            issues.append(f"conclusion_type: all themes need valid type (predictive|evaluative|descriptive). Invalid: {invalid}")
 
     connections = result.get("connections", [])
     if expected.get("has_connections", True):
@@ -292,9 +309,9 @@ def format_synthesize_test_report(report: dict) -> str:
 
     for r in report["results"]:
         status = "PASS" if r["score"] >= 4 else "FAIL"
-        bar = "=" * r["score"] + "-" * (5 - r["score"])
+        bar = "=" * r["score"] + "-" * (6 - r["score"])
         lines.append(f"\n  [{status}] {r['fixture']}")
-        lines.append(f"  Score: [{bar}] {r['score']}/5")
+        lines.append(f"  Score: [{bar}] {r['score']}/6")
         lines.append(f"  Themes: {r.get('theme_count', '?')}")
         if r["issues"]:
             for issue in r["issues"]:

@@ -159,6 +159,7 @@ def test_compare_synthesize_result_perfect():
                 "related_item_ids": ["abc123def456"],
                 "significance": "改变软件开发范式",
                 "counter_evidence": "目前所有工具都在演示阶段，实际部署数据有限",
+                "conclusion_type": "evaluative",
             }
         ],
         "connections": [
@@ -173,7 +174,7 @@ def test_compare_synthesize_result_perfect():
         "has_narrative": True,
     }
     score, issues = _compare_synthesize_result(result, expected)
-    assert score == 5
+    assert score == 6
     assert issues == []
 
 
@@ -187,6 +188,7 @@ def test_compare_synthesize_result_missing_counter_evidence():
                 "related_item_ids": ["abc123"],
                 "significance": "意义",
                 "counter_evidence": "",  # empty!
+                "conclusion_type": "descriptive",
             }
         ],
         "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "支撑佐证", "description": "关联"}],
@@ -194,8 +196,51 @@ def test_compare_synthesize_result_missing_counter_evidence():
     }
     expected = {"has_counter_evidence": True}
     score, issues = _compare_synthesize_result(result, expected)
-    assert score < 5
+    assert score < 6
     assert any("counter_evidence" in i for i in issues)
+
+
+def test_compare_synthesize_result_invalid_conclusion_type():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    result = {
+        "themes": [
+            {
+                "title": "测试主题",
+                "summary": "摘要",
+                "related_item_ids": ["abc123"],
+                "significance": "意义",
+                "counter_evidence": "有反面证据",
+            }
+        ],
+        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "并列发展", "description": "关联"}],
+        "overall_narrative": "全局叙事",
+    }
+    expected = {}
+    score, issues = _compare_synthesize_result(result, expected)
+    assert score < 6
+    assert any("conclusion_type" in i for i in issues)
+
+
+def test_compare_synthesize_result_wrong_conclusion_type():
+    from hermes.pipeline.test_prompts import _compare_synthesize_result
+    result = {
+        "themes": [
+            {
+                "title": "测试主题",
+                "summary": "摘要",
+                "related_item_ids": ["abc123"],
+                "significance": "意义",
+                "counter_evidence": "有反面证据",
+                "conclusion_type": "forecast",  # invalid!
+            }
+        ],
+        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "并列发展", "description": "关联"}],
+        "overall_narrative": "全局叙事",
+    }
+    expected = {}
+    score, issues = _compare_synthesize_result(result, expected)
+    assert score < 6
+    assert any("conclusion_type" in i for i in issues)
 
 
 def test_compare_synthesize_result_no_themes():
@@ -207,7 +252,7 @@ def test_compare_synthesize_result_no_themes():
     }
     expected = {}
     score, issues = _compare_synthesize_result(result, expected)
-    assert score < 3
+    assert score < 4
     assert any("themes" in i for i in issues)
 
 
@@ -225,6 +270,7 @@ def test_compare_synthesize_result_missing_narrative():
             {
                 "title": "T", "summary": "S", "related_item_ids": ["x"],
                 "significance": "sig", "counter_evidence": "CE",
+                "conclusion_type": "descriptive",
             }
         ],
         "connections": [],
@@ -252,6 +298,7 @@ def test_run_synthesize_tests_integration():
                         "related_item_ids": ["abc123def456"],
                         "significance": "测试意义",
                         "counter_evidence": "目前数据量有限，尚不能得出确定结论",
+                        "conclusion_type": "evaluative",
                     }
                 ],
                 "connections": [
