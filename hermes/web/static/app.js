@@ -9,17 +9,14 @@ const state = {
   health: null,
 };
 
-const DOMAIN_COLORS = {
-  'AI编程工具': '#4caf50',
-  '大模型安全': '#2196f3',
-  '网络安全': '#00bcd4',
-  '科技产业': '#e91e63',
-  '中东局势': '#f44336',
-  '能源安全': '#ff9800',
-  '气候环境': '#8bc34a',
-  '经济金融': '#ffc107',
-  '地缘政治': '#9c27b0',
-};
+function getDomainColor(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash % 360);
+  return `hsl(${hue}, 55%, 50%)`;
+}
 
 // == Utilities ==
 function formatTimeAgo(ts) {
@@ -171,7 +168,7 @@ function renderCard(node) {
   const statusClass = conclusionTypeClass(node);
   const statusLabel = conclusionTypeLabel(node.conclusion_type || 'descriptive');
   const domainLabel = node.domain || 'unknown';
-  const domainColor = DOMAIN_COLORS[domainLabel] || '#666';
+  const domainColor = getDomainColor(domainLabel);
   const timeAgo = formatTimeAgo(node.created_at);
   const versionInfo = node.version_count > 1 ? ` · v${node.version_count}` : '';
 
