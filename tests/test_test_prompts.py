@@ -135,7 +135,7 @@ def test_run_prompt_tests_integration():
     assert report["passed"] == 3
 
 
-# -- Synthesize test runner tests --
+# -- Synthesize test runner tests (split Stage 1 + Stage 2) --
 
 def test_load_synthesize_fixtures():
     from hermes.pipeline.test_prompts import load_synthesize_fixtures
@@ -149,164 +149,164 @@ def test_load_synthesize_fixtures_with_limit():
     assert len(fixtures) == 2
 
 
-def test_compare_synthesize_result_perfect():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
+def test_compare_theme_result_perfect():
+    from hermes.pipeline.test_prompts import _compare_theme_result
     result = {
-        "themes": [
-            {
-                "title": "AI编程工具竞争加剧",
-                "summary": "多家公司推出AI编程工具",
-                "related_item_ids": ["abc123def456"],
-                "significance": "改变软件开发范式",
-                "counter_evidence": "目前所有工具都在演示阶段，实际部署数据有限",
-                "conclusion_type": "evaluative",
-            }
-        ],
-        "connections": [
-            {"from_theme": 0, "to_theme": 0, "relationship": "因果关系", "description": "竞争驱动创新"}
-        ],
-        "overall_narrative": "AI编程工具市场正在快速演变",
+        "title": "AI编程工具竞争加剧",
+        "conclusion_type": "evaluative",
+        "summary": "多家公司推出AI编程工具",
+        "significance": "改变软件开发范式",
+        "counter_evidence": "目前所有工具都在演示阶段，实际部署数据有限",
+        "related_item_ids": ["abc123def456"],
     }
-    expected = {
-        "min_themes": 1,
-        "has_counter_evidence": True,
-        "has_connections": True,
-        "has_narrative": True,
-    }
-    score, issues = _compare_synthesize_result(result, expected)
-    assert score == 6
+    expected = {"expected_type": "evaluative"}
+    score, issues = _compare_theme_result(result, expected)
+    assert score == 4
     assert issues == []
 
 
-def test_compare_synthesize_result_missing_counter_evidence():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
+def test_compare_theme_result_wrong_type():
+    from hermes.pipeline.test_prompts import _compare_theme_result
     result = {
-        "themes": [
-            {
-                "title": "测试主题",
-                "summary": "摘要",
-                "related_item_ids": ["abc123"],
-                "significance": "意义",
-                "counter_evidence": "",  # empty!
-                "conclusion_type": "descriptive",
-            }
-        ],
-        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "支撑佐证", "description": "关联"}],
-        "overall_narrative": "全局叙事",
+        "title": "测试主题",
+        "conclusion_type": "descriptive",
+        "summary": "摘要",
+        "significance": "意义",
+        "counter_evidence": "反面证据",
     }
-    expected = {"has_counter_evidence": True}
-    score, issues = _compare_synthesize_result(result, expected)
-    assert score < 6
+    expected = {"expected_type": "predictive"}
+    score, issues = _compare_theme_result(result, expected)
+    assert score == 3
+    assert any("conclusion_type" in i for i in issues)
+
+
+def test_compare_theme_result_invalid_type():
+    from hermes.pipeline.test_prompts import _compare_theme_result
+    result = {
+        "title": "测试主题",
+        "conclusion_type": "forecast",
+        "summary": "摘要",
+        "significance": "意义",
+        "counter_evidence": "反面证据",
+    }
+    expected = {}
+    score, issues = _compare_theme_result(result, expected)
+    assert score < 4
+    assert any("conclusion_type" in i for i in issues)
+
+
+def test_compare_theme_result_missing_type():
+    from hermes.pipeline.test_prompts import _compare_theme_result
+    result = {
+        "title": "测试主题",
+        "summary": "摘要",
+        "significance": "意义",
+        "counter_evidence": "反面证据",
+    }
+    expected = {}
+    score, issues = _compare_theme_result(result, expected)
+    assert score < 4
+    assert any("conclusion_type" in i for i in issues)
+
+
+def test_compare_theme_result_missing_counter_evidence():
+    from hermes.pipeline.test_prompts import _compare_theme_result
+    result = {
+        "title": "测试主题",
+        "conclusion_type": "descriptive",
+        "summary": "摘要",
+        "significance": "意义",
+        "counter_evidence": "",
+    }
+    expected = {}
+    score, issues = _compare_theme_result(result, expected)
     assert any("counter_evidence" in i for i in issues)
 
 
-def test_compare_synthesize_result_invalid_conclusion_type():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
-    result = {
-        "themes": [
-            {
-                "title": "测试主题",
-                "summary": "摘要",
-                "related_item_ids": ["abc123"],
-                "significance": "意义",
-                "counter_evidence": "有反面证据",
-            }
-        ],
-        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "并列发展", "description": "关联"}],
-        "overall_narrative": "全局叙事",
-    }
-    expected = {}
-    score, issues = _compare_synthesize_result(result, expected)
-    assert score < 6
-    assert any("conclusion_type" in i for i in issues)
-
-
-def test_compare_synthesize_result_wrong_conclusion_type():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
-    result = {
-        "themes": [
-            {
-                "title": "测试主题",
-                "summary": "摘要",
-                "related_item_ids": ["abc123"],
-                "significance": "意义",
-                "counter_evidence": "有反面证据",
-                "conclusion_type": "forecast",  # invalid!
-            }
-        ],
-        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "并列发展", "description": "关联"}],
-        "overall_narrative": "全局叙事",
-    }
-    expected = {}
-    score, issues = _compare_synthesize_result(result, expected)
-    assert score < 6
-    assert any("conclusion_type" in i for i in issues)
-
-
-def test_compare_synthesize_result_no_themes():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
-    result = {
-        "themes": [],
-        "connections": [],
-        "overall_narrative": "empty",
-    }
-    expected = {}
-    score, issues = _compare_synthesize_result(result, expected)
-    assert score < 4
-    assert any("themes" in i for i in issues)
-
-
-def test_compare_synthesize_result_not_dict():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
-    score, issues = _compare_synthesize_result([], {})
+def test_compare_theme_result_not_dict():
+    from hermes.pipeline.test_prompts import _compare_theme_result
+    score, issues = _compare_theme_result([], {})
     assert score == 0
     assert any("not a JSON object" in i for i in issues)
 
 
-def test_compare_synthesize_result_missing_narrative():
-    from hermes.pipeline.test_prompts import _compare_synthesize_result
+def test_compare_cross_result_perfect():
+    from hermes.pipeline.test_prompts import _compare_cross_result
     result = {
-        "themes": [
-            {
-                "title": "T", "summary": "S", "related_item_ids": ["x"],
-                "significance": "sig", "counter_evidence": "CE",
-                "conclusion_type": "descriptive",
-            }
+        "connections": [
+            {"from_theme": 0, "to_theme": 1, "relationship": "因果关系", "description": "竞争驱动创新"}
         ],
+        "overall_narrative": "AI编程工具市场正在快速演变",
+    }
+    expected = {"has_connections": True, "has_narrative": True}
+    score, issues = _compare_cross_result(result, expected)
+    assert score == 2
+    assert issues == []
+
+
+def test_compare_cross_result_no_connections():
+    from hermes.pipeline.test_prompts import _compare_cross_result
+    result = {
         "connections": [],
+        "overall_narrative": "some narrative",
+    }
+    expected = {"has_connections": True}
+    score, issues = _compare_cross_result(result, expected)
+    assert any("connections" in i for i in issues)
+
+
+def test_compare_cross_result_no_narrative():
+    from hermes.pipeline.test_prompts import _compare_cross_result
+    result = {
+        "connections": [{"from_theme": 0, "to_theme": 0, "relationship": "支撑佐证", "description": "x"}],
         "overall_narrative": "",
     }
     expected = {"has_narrative": True}
-    score, issues = _compare_synthesize_result(result, expected)
+    score, issues = _compare_cross_result(result, expected)
     assert any("overall_narrative" in i for i in issues)
 
 
+def test_compare_cross_result_not_dict():
+    from hermes.pipeline.test_prompts import _compare_cross_result
+    score, issues = _compare_cross_result("not json", {})
+    assert score == 0
+    assert any("not a JSON object" in i for i in issues)
+
+
 def test_run_synthesize_tests_integration():
-    """Integration test: run synthesize fixtures through prompt with mock LLM."""
+    """Integration test: run split synthesize tests with mock LLM.
+
+    The mock returns different responses for Stage 1 (theme extraction) and
+    Stage 2 (cross synthesis) by inspecting the prompt content.
+    """
     from hermes.pipeline.test_prompts import run_synthesize_tests
 
     mock_client = MagicMock()
 
+    call_count = [0]
+
     def mock_create(*args, **kwargs):
+        call_count[0] += 1
         msg = MagicMock()
-        msg.choices = [MagicMock(message=MagicMock(
-            content=json.dumps({
-                "themes": [
-                    {
-                        "title": "测试主题",
-                        "summary": "这是一个测试主题的摘要",
-                        "related_item_ids": ["abc123def456"],
-                        "significance": "测试意义",
-                        "counter_evidence": "目前数据量有限，尚不能得出确定结论",
-                        "conclusion_type": "evaluative",
-                    }
-                ],
+        if call_count[0] % 2 == 1:
+            # Stage 1: theme extraction
+            content = json.dumps({
+                "title": "测试主题",
+                "conclusion_type": "evaluative",
+                "summary": "这是一个测试主题的摘要",
+                "significance": "测试意义",
+                "counter_evidence": "目前数据量有限，尚不能得出确定结论",
+                "related_item_ids": ["abc123def456"],
+            })
+        else:
+            # Stage 2: cross synthesis
+            content = json.dumps({
                 "connections": [
                     {"from_theme": 0, "to_theme": 0, "relationship": "因果关系", "description": "测试关联"}
                 ],
                 "overall_narrative": "测试全局叙事，描述整体趋势",
             })
-        ))]
+        msg.choices = [MagicMock(message=MagicMock(content=content))]
         return msg
 
     mock_client.chat.completions.create.side_effect = mock_create
@@ -321,9 +321,15 @@ def test_format_synthesize_report_all_pass():
     report = {
         "passed": 3, "total": 3,
         "results": [
-            {"fixture": "001", "score": 5, "issues": [], "theme_count": 2},
-            {"fixture": "002", "score": 4, "issues": [], "theme_count": 1},
-            {"fixture": "003", "score": 5, "issues": [], "theme_count": 3},
+            {"fixture": "001", "score": 5, "theme_score": 3, "cross_score": 2,
+             "issues": [], "theme_count": 1, "conclusion_type": "evaluative",
+             "has_counter_evidence": True},
+            {"fixture": "002", "score": 4, "theme_score": 2, "cross_score": 2,
+             "issues": [], "theme_count": 1, "conclusion_type": "predictive",
+             "has_counter_evidence": True},
+            {"fixture": "003", "score": 6, "theme_score": 4, "cross_score": 2,
+             "issues": [], "theme_count": 1, "conclusion_type": "descriptive",
+             "has_counter_evidence": True},
         ],
     }
     output = format_synthesize_test_report(report)
@@ -336,8 +342,12 @@ def test_format_synthesize_report_with_failures():
     report = {
         "passed": 1, "total": 2,
         "results": [
-            {"fixture": "001", "score": 5, "issues": [], "theme_count": 2},
-            {"fixture": "002", "score": 2, "issues": ["counter_evidence: all themes must have non-empty counter_evidence"], "theme_count": 1},
+            {"fixture": "001", "score": 5, "theme_score": 3, "cross_score": 2,
+             "issues": [], "theme_count": 1, "conclusion_type": "evaluative",
+             "has_counter_evidence": True},
+            {"fixture": "002", "score": 2, "theme_score": 1, "cross_score": 1,
+             "issues": ["[S1] counter_evidence: must be non-empty"], "theme_count": 1,
+             "conclusion_type": "?", "has_counter_evidence": False},
         ],
     }
     output = format_synthesize_test_report(report)

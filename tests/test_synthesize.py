@@ -43,16 +43,28 @@ def test_synthesize_uses_llm_to_explain():
     ]
 
     mock_client = MagicMock()
-    m = MagicMock()
-    m.choices = [MagicMock(message=MagicMock(content=json.dumps({
-        "themes": [
-            {"title": "AI安全进展", "summary": "多项AI安全研究取得进展",
-             "related_item_ids": ["a", "b"], "significance": "合规要求趋严"},
-        ],
-        "connections": [],
-        "overall_narrative": "AI安全领域持续活跃，能源市场波动。",
-    })))]
-    mock_client.chat.completions.create.return_value = m
+
+    def mock_create(*args, **kwargs):
+        m = MagicMock()
+        content = kwargs.get("messages", [{}])[0].get("content", "")
+        # Stage 1: theme extraction (per-cluster call)
+        if "以下是一组通过向量聚类发现的语义相关文章" in content:
+            m.choices = [MagicMock(message=MagicMock(content=json.dumps({
+                "title": "AI安全进展", "conclusion_type": "evaluative",
+                "summary": "多项AI安全研究取得进展",
+                "significance": "合规要求趋严",
+                "counter_evidence": "当前研究样本量有限，结论可能不具普遍性",
+                "related_item_ids": ["a", "b"],
+            })))]
+        else:
+            # Stage 2: cross synthesis
+            m.choices = [MagicMock(message=MagicMock(content=json.dumps({
+                "connections": [],
+                "overall_narrative": "AI安全领域持续活跃，能源市场波动。",
+            })))]
+        return m
+
+    mock_client.chat.completions.create.side_effect = mock_create
 
     result = synthesize_items(items, ["AI安全", "能源"], mock_client)
     assert result is not None

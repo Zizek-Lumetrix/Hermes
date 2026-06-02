@@ -1,6 +1,7 @@
 """Prompt regression testing: run current prompts against annotated fixtures.
 
 Usage: hermes test-prompts [-n N] [--threshold 4]
+       hermes test-prompts --synthesize [-n N] [--threshold 4]
 """
 
 import json
@@ -154,9 +155,11 @@ def format_prompt_test_report(report: dict) -> str:
     return "\n".join(lines)
 
 
-# -- Synthesize prompt regression tests --
+# -- Synthesize prompt regression tests (split: Stage 1 theme extraction + Stage 2 cross synthesis) --
 
 SYNTHESIZE_FIXTURES_DIR = FIXTURES_DIR / "synthesize"
+
+VALID_TYPES = {"predictive", "evaluative", "descriptive"}
 
 
 def load_synthesize_fixtures(limit: int | None = None) -> list[dict]:
@@ -172,56 +175,55 @@ def load_synthesize_fixtures(limit: int | None = None) -> list[dict]:
     return fixtures
 
 
-def _compare_synthesize_result(result: dict, expected: dict) -> tuple[int, list[str]]:
-    """Compare a synthesize LLM result against expected structure.
+def _compare_theme_result(result: dict, expected: dict) -> tuple[int, list[str]]:
+    """Compare a Stage 1 theme extraction result against expected structure.
 
-    Returns (score 0-6, list of issues).
+    Returns (score 0-4, list of issues).
     """
-
-    VALID_TYPES = {"predictive", "evaluative", "descriptive"}
-
     score = 0
     issues = []
 
     if not isinstance(result, dict):
         return 0, ["result is not a JSON object"]
 
-    themes = result.get("themes", [])
-    if isinstance(themes, list) and len(themes) > 0:
+    required = {"title", "conclusion_type", "summary", "significance", "counter_evidence"}
+    if required.issubset(result.keys()):
         score += 1
     else:
-        issues.append("themes: must be a non-empty array")
+        missing = required - result.keys()
+        issues.append(f"missing required fields: {missing}")
 
-    min_themes = expected.get("min_themes", 1)
-    if isinstance(themes, list) and len(themes) >= min_themes:
+    ctype = result.get("conclusion_type", "")
+    if ctype in VALID_TYPES:
         score += 1
     else:
-        issues.append(f"theme_count: expected at least {min_themes}, got {len(themes) if isinstance(themes, list) else 0}")
+        issues.append(f"conclusion_type: invalid '{ctype}', expected one of {VALID_TYPES}")
 
-    if expected.get("has_counter_evidence", True):
-        all_have_counter = all(
-            isinstance(t.get("counter_evidence"), str) and len(t.get("counter_evidence", "")) > 0
-            for t in (themes if isinstance(themes, list) else [])
-        )
-        if all_have_counter:
+    counter = result.get("counter_evidence", "")
+    if isinstance(counter, str) and len(counter) > 0:
+        score += 1
+    else:
+        issues.append("counter_evidence: must be non-empty")
+
+    if expected.get("expected_type"):
+        if ctype == expected["expected_type"]:
             score += 1
         else:
-            issues.append("counter_evidence: all themes must have non-empty counter_evidence")
+            issues.append(f"conclusion_type: expected {expected['expected_type']}, got {ctype}")
 
-    if expected.get("has_conclusion_type", True):
-        all_have_ctype = all(
-            t.get("conclusion_type") in VALID_TYPES
-            for t in (themes if isinstance(themes, list) else [])
-        )
-        if all_have_ctype:
-            score += 1
-        else:
-            invalid = [
-                f"{t.get('title', '?')}={t.get('conclusion_type', 'missing')}"
-                for t in (themes if isinstance(themes, list) else [])
-                if t.get("conclusion_type") not in VALID_TYPES
-            ]
-            issues.append(f"conclusion_type: all themes need valid type (predictive|evaluative|descriptive). Invalid: {invalid}")
+    return score, issues
+
+
+def _compare_cross_result(result: dict, expected: dict) -> tuple[int, list[str]]:
+    """Compare a Stage 2 cross-synthesis result against expected structure.
+
+    Returns (score 0-2, list of issues).
+    """
+    score = 0
+    issues = []
+
+    if not isinstance(result, dict):
+        return 0, ["result is not a JSON object"]
 
     connections = result.get("connections", [])
     if expected.get("has_connections", True):
@@ -241,8 +243,13 @@ def _compare_synthesize_result(result: dict, expected: dict) -> tuple[int, list[
 
 
 def run_synthesize_tests(client, limit: int | None = None, threshold: int = 4) -> dict:
-    """Run synthesize prompt regression tests against fixtures."""
-    from hermes.pipeline.synthesize import _SYNTHESIZE_PROMPT
+    """Run split synthesize prompt regression tests.
+
+    Stage 1: theme_extract prompt tested per fixture (all items as one cluster).
+    Stage 2: synthesize_cross prompt tested with themes extracted from Stage 1.
+    Combined score: 0-6 (4 from theme extraction + 2 from cross synthesis).
+    """
+    from hermes.pipeline.synthesize import _THEME_EXTRACT_PROMPT, _SYNTHESIZE_CROSS_PROMPT
 
     fixtures = load_synthesize_fixtures(limit=limit)
     if not fixtures:
@@ -250,7 +257,8 @@ def run_synthesize_tests(client, limit: int | None = None, threshold: int = 4) -
 
     results = []
     for fix in fixtures:
-        # Build user message the same way synthesize_items does
+        # Build item summaries for the fixture's cluster
+        item_ids = [item["id"][:12] for item in fix["items"]]
         summaries = []
         for item in fix["items"]:
             analysis = item.get("analysis", {})
@@ -262,37 +270,78 @@ def run_synthesize_tests(client, limit: int | None = None, threshold: int = 4) -
                 f"[{short_id}] {title} (来源:{source})\n{summary}"
             )
 
-        prompt = _SYNTHESIZE_PROMPT.format(domain_list=fix["domain_list"])
+        # Stage 1: Theme extraction
+        prompt = _THEME_EXTRACT_PROMPT.format(domain_list=fix["domain_list"])
         user_msg = prompt + "\n\n---\n" + "\n---\n".join(summaries)
 
+        theme_result = None
         try:
             response = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[{"role": "user", "content": user_msg}],
-                temperature=0.3,
-                max_tokens=4000,
+                temperature=0.1,
+                max_tokens=1200,
             )
             raw = response.choices[0].message.content.strip()
-            result = _parse_response(raw)
+            theme_result = _parse_response(raw)
         except Exception:
-            result = None
+            pass
 
-        if result is None:
+        if theme_result is None:
             results.append({
                 "fixture": fix["_id"],
                 "score": 0,
-                "issues": ["LLM call failed or JSON parse error"],
+                "issues": ["Stage 1: LLM call failed or JSON parse error"],
             })
             continue
 
         expected = fix.get("expected", {})
-        score, issues = _compare_synthesize_result(result, expected)
-        theme_count = len(result.get("themes", []))
+        theme_score, theme_issues = _compare_theme_result(theme_result, expected)
+
+        # Stage 2: Cross-synthesis (with extracted theme)
+        themes_for_cross = [{
+            "id": 0,
+            "title": theme_result.get("title", ""),
+            "type": theme_result.get("conclusion_type", "descriptive"),
+            "summary": theme_result.get("summary", ""),
+        }]
+
+        cross_prompt = _SYNTHESIZE_CROSS_PROMPT.format(
+            domain_list=fix["domain_list"],
+            themes_json=json.dumps(themes_for_cross, ensure_ascii=False),
+        )
+
+        cross_result = None
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": cross_prompt}],
+                temperature=0.4,
+                max_tokens=2000,
+            )
+            raw = response.choices[0].message.content.strip()
+            cross_result = _parse_response(raw)
+        except Exception:
+            pass
+
+        if cross_result is None:
+            cross_score = 0
+            cross_issues = ["Stage 2: LLM call failed or JSON parse error"]
+        else:
+            cross_score, cross_issues = _compare_cross_result(cross_result, expected)
+
+        total_score = theme_score + cross_score
+        all_issues = [f"[S1] {i}" for i in theme_issues] + [f"[S2] {i}" for i in cross_issues]
+
         results.append({
             "fixture": fix["_id"],
-            "score": score,
-            "issues": issues,
-            "theme_count": theme_count,
+            "score": total_score,
+            "theme_score": theme_score,
+            "cross_score": cross_score,
+            "issues": all_issues,
+            "theme_count": 1,
+            "conclusion_type": theme_result.get("conclusion_type", "?"),
+            "has_counter_evidence": bool(theme_result.get("counter_evidence")),
         })
 
     passed = sum(1 for r in results if r["score"] >= threshold)
@@ -310,8 +359,8 @@ def format_synthesize_test_report(report: dict) -> str:
         status = "PASS" if r["score"] >= 4 else "FAIL"
         bar = "=" * r["score"] + "-" * (6 - r["score"])
         lines.append(f"\n  [{status}] {r['fixture']}")
-        lines.append(f"  Score: [{bar}] {r['score']}/6")
-        lines.append(f"  Themes: {r.get('theme_count', '?')}")
+        lines.append(f"  Score: [{bar}] {r['score']}/6 (S1:{r.get('theme_score', '?')} + S2:{r.get('cross_score', '?')})")
+        lines.append(f"  Type: {r.get('conclusion_type', '?')} | Counter-evidence: {r.get('has_counter_evidence', False)}")
         if r["issues"]:
             for issue in r["issues"]:
                 lines.append(f"  -> {issue}")

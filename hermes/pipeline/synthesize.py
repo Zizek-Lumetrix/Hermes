@@ -1,5 +1,6 @@
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,8 @@ def _load_prompt(name: str) -> str:
     return path.read_text()
 
 
-_SYNTHESIZE_PROMPT = _load_prompt("synthesize.txt")
+_THEME_EXTRACT_PROMPT = _load_prompt("theme_extract.txt")
+_SYNTHESIZE_CROSS_PROMPT = _load_prompt("synthesize_cross.txt")
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -101,6 +103,59 @@ def match_conclusion(
     return best_id, "update"
 
 
+def _extract_theme(
+    cluster_item_ids: list[str],
+    all_items: list[dict],
+    domain_list: str,
+    client,
+    feedback_context: str | None = None,
+) -> dict | None:
+    """Stage 1: Extract a single theme from a cluster of related items."""
+    id_set = set(cluster_item_ids)
+    cluster_items = [i for i in all_items if i["id"] in id_set]
+    if not cluster_items:
+        return None
+
+    summaries = []
+    for item in cluster_items:
+        try:
+            analysis = json.loads(item.get("analysis", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            analysis = {}
+        title = analysis.get("title_cn", item.get("title", "Untitled"))
+        summary = analysis.get("summary", "")[:200]
+        source = item.get("source", "Unknown")
+        short_id = item["id"][:12]
+        summaries.append(
+            f"[{short_id}] {title} (来源:{source})\n{summary}"
+        )
+
+    prompt = _THEME_EXTRACT_PROMPT.format(domain_list=domain_list)
+
+    parts = [prompt]
+    if feedback_context:
+        parts.append(feedback_context)
+    parts.append("---\n" + "\n---\n".join(summaries))
+    user_msg = "\n\n".join(parts)
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": user_msg}],
+            temperature=0.1,
+            max_tokens=1200,
+        )
+        raw = response.choices[0].message.content.strip()
+        raw = re.sub(r"```\w*\n?|```", "", raw)
+        parsed = json.loads(raw)
+        required = {"title", "conclusion_type", "summary", "significance", "counter_evidence"}
+        if not required.issubset(parsed.keys()):
+            return None
+        return parsed
+    except Exception:
+        return None
+
+
 def synthesize_items(
     items: list[dict],
     domains: list[str],
@@ -123,52 +178,63 @@ def synthesize_items(
         return None
 
     clusters = density_peak_cluster(qualified, min_cluster_size=min_items)
-
-    representatives = []
-    for cl in clusters:
-        rep = next((i for i in qualified if i["id"] in cl), None)
-        if rep:
-            representatives.append(rep)
-
     domain_list = "、".join(domains)
 
-    summaries = []
-    for item in representatives:
-        try:
-            analysis = json.loads(item.get("analysis", "{}"))
-        except (json.JSONDecodeError, TypeError):
-            analysis = {}
-        title = analysis.get("title_cn", item.get("title", "Untitled"))
-        summary = analysis.get("summary", "")[:200]
-        source = item.get("source", "Unknown")
-        short_id = item["id"][:12]
-        summaries.append(
-            f"[{short_id}] {title} (来源:{source})\n{summary}"
-        )
+    # Stage 1: Extract themes from each cluster in parallel
+    themes = []
+    with ThreadPoolExecutor(max_workers=min(8, len(clusters))) as executor:
+        futures = {}
+        for cl in clusters:
+            future = executor.submit(
+                _extract_theme, cl, qualified, domain_list, client, feedback_context
+            )
+            futures[future] = cl
 
-    prompt = _SYNTHESIZE_PROMPT.format(domain_list=domain_list)
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                themes.append(result)
 
-    parts = [prompt]
-    if feedback_context:
-        parts.append(feedback_context)
-    parts.append("---\n" + "\n---\n".join(summaries))
-    user_msg = "\n\n".join(parts)
+    if not themes:
+        return None
+
+    # Stage 2: Cross-theme synthesis
+    themes_for_cross = [
+        {
+            "id": i,
+            "title": t["title"],
+            "type": t.get("conclusion_type", "descriptive"),
+            "summary": t.get("summary", ""),
+        }
+        for i, t in enumerate(themes)
+    ]
+
+    prompt = _SYNTHESIZE_CROSS_PROMPT.format(
+        domain_list=domain_list,
+        themes_json=json.dumps(themes_for_cross, ensure_ascii=False),
+    )
+
+    connections = []
+    overall_narrative = ""
 
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": user_msg}],
-            temperature=0.3,
-            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=2000,
         )
         raw = response.choices[0].message.content.strip()
         raw = re.sub(r"```\w*\n?|```", "", raw)
         parsed = json.loads(raw)
-        if not all(k in parsed for k in ("themes", "connections", "overall_narrative")):
-            return None
-        if not isinstance(parsed["themes"], list) or len(parsed["themes"]) == 0:
-            return None
-        parsed["_clusters"] = clusters
-        return parsed
+        connections = parsed.get("connections", [])
+        overall_narrative = parsed.get("overall_narrative", "")
     except Exception:
-        return None
+        pass
+
+    return {
+        "themes": themes,
+        "connections": connections,
+        "overall_narrative": overall_narrative,
+        "_clusters": clusters,
+    }

@@ -21,16 +21,26 @@ def test_synthesize_uses_combined_surprise_exploit_score():
     ]
 
     mock_client = MagicMock()
-    m = MagicMock()
-    m.choices = [MagicMock(message=MagicMock(content=json.dumps({
-        "themes": [
-            {"title": "AI安全进展", "summary": "多项AI安全研究取得进展",
-             "related_item_ids": ["a", "b"], "significance": "合规要求趋严"},
-        ],
-        "connections": [],
-        "overall_narrative": "AI安全领域持续活跃。",
-    })))]
-    mock_client.chat.completions.create.return_value = m
+
+    def mock_create(*args, **kwargs):
+        m = MagicMock()
+        content = kwargs.get("messages", [{}])[0].get("content", "")
+        if "以下是一组通过向量聚类发现的语义相关文章" in content:
+            m.choices = [MagicMock(message=MagicMock(content=json.dumps({
+                "title": "AI安全进展", "conclusion_type": "evaluative",
+                "summary": "多项AI安全研究取得进展",
+                "significance": "合规要求趋严",
+                "counter_evidence": "当前研究样本量有限",
+                "related_item_ids": ["a", "b"],
+            })))]
+        else:
+            m.choices = [MagicMock(message=MagicMock(content=json.dumps({
+                "connections": [],
+                "overall_narrative": "AI安全领域持续活跃。",
+            })))]
+        return m
+
+    mock_client.chat.completions.create.side_effect = mock_create
 
     # min_score=0.5, items a (0.2 exploit but 0.9 surprise) and b should pass
     result = synthesize_items(items, ["AI安全", "能源"], mock_client, min_score=0.5)

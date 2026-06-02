@@ -148,10 +148,14 @@ class Database:
         rows = self._query("SELECT url FROM items")
         return {r["url"] for r in rows}
 
-    def get_items_for_enrich(self, limit: int = 500) -> list[dict]:
+    def get_items_for_enrich(self, limit: int = 500, per_source: int = 40) -> list[dict]:
+        """Return up to *limit* new items, with at most *per_source* from any single source."""
         return self._query(
-            "SELECT * FROM items WHERE status = 'new' ORDER BY created_at LIMIT %s",
-            (limit,),
+            "SELECT * FROM ("
+            "  SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY created_at) AS rn "
+            "  FROM items WHERE status = 'new'"
+            ") sub WHERE rn <= %s ORDER BY created_at LIMIT %s",
+            (per_source, limit),
         )
 
     # ------------------------------------------------------------------

@@ -14,7 +14,7 @@ ASSESS_PROMPT = _load_prompt("assess.txt")
 
 def apply_rules(item: dict) -> bool:
     content = item.get("content", "")
-    return len(content) >= 100
+    return len(content) >= 60
 
 
 def assess_item(item: dict, domains: list[str], client) -> dict | None:
