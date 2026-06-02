@@ -233,7 +233,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
                 d = item.get("domain", "")
                 if d:
                     domains_seen[d] = domains_seen.get(d, 0) + 1
-            domain = max(domains_seen, key=domains_seen.get) if domains_seen else config.domains[0]
+            domain = max(domains_seen, key=domains_seen.get) if domains_seen else ""
 
             # Compute embedding as mean of related item embeddings
             item_embs = [item["embedding"] for item in related_items if item.get("embedding") is not None]

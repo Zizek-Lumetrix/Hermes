@@ -255,16 +255,18 @@ def get_runs():
 @app.get("/api/domains")
 def get_domains():
     config = get_config()
-    configured = config.domains
     if not _db_ok():
-        return {"configured": configured, "proposed": []}
+        return {"active": config.domains, "from_llm": []}
     db = get_db()
-    rows = db._query(
-        "SELECT DISTINCT domain, domain_proposed FROM items "
-        "WHERE domain IS NOT NULL AND domain != '' AND domain_proposed IS NOT NULL AND domain_proposed != ''"
+    active = db._query(
+        "SELECT domain, COUNT(*) as cnt FROM conclusions "
+        "WHERE status = 'active' AND domain IS NOT NULL AND domain != '' "
+        "GROUP BY domain ORDER BY cnt DESC"
     )
-    proposed = [{"matched": r["domain"], "proposed": r["domain_proposed"]} for r in rows]
-    return {"configured": configured, "proposed": proposed}
+    domain_names = [r["domain"] for r in active]
+    preset = set(config.domains)
+    from_llm = [d for d in domain_names if d not in preset]
+    return {"active": domain_names, "configured": config.domains, "from_llm": from_llm}
 
 
 @app.get("/api/health")

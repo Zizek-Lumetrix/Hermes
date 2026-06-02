@@ -87,8 +87,7 @@ def run_prompt_tests(client, domains: list[str] | None = None,
 
     results = []
     for fix in fixtures:
-        domain_choices = "|".join(domains)
-        prompt_text = ASSESS_PROMPT.format(domains="、".join(domains), domain_choices=domain_choices)
+        prompt_text = ASSESS_PROMPT.format(domains="、".join(domains))
 
         item_text = f"标题：{fix['title']}\n来源：{fix['source']}\n内容：{fix['content'][:3000]}"
         user_msg = f"{prompt_text}\n\n{item_text}"
