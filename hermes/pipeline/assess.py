@@ -61,6 +61,9 @@ def assess_item(item: dict, domains: list[str], client) -> dict | None:
     proposed = result.get("domain_proposed", "").strip()
     item["domain"] = domain if domain else ""
     item["domain_proposed"] = proposed if proposed else None
+    item["category"] = result.get("category", "").strip()
+    tags = result.get("tags", [])
+    item["tags"] = tags if isinstance(tags, list) else []
     item["status"] = "assessed"
     return item
 

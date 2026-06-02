@@ -1,0 +1,1 @@
+ALTER TABLE conclusions ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';

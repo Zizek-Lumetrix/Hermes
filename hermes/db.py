@@ -12,11 +12,12 @@ _ALLOWED_COLUMNS = frozenset({
     "source", "title", "url", "content", "published_at",
     "fingerprint", "cluster_id", "embedding", "implicit_cluster",
     "analysis", "entities", "prediction", "exploit_score", "surprise_score",
-    "status", "domain", "domain_proposed",
+    "status", "domain", "domain_proposed", "category", "tags",
 })
 
 _VECTOR_COLUMNS = frozenset({"embedding"})
 _JSONB_COLUMNS = frozenset({"analysis", "entities", "prediction"})
+_ARRAY_COLUMNS = frozenset({"tags"})
 
 
 def _find_migrations_dir() -> Path:
@@ -127,6 +128,9 @@ class Database:
             elif k in _JSONB_COLUMNS:
                 set_clauses.append(f"{k} = %s::jsonb")
                 values.append(json.dumps(v) if isinstance(v, (dict, list)) else v)
+            elif k in _ARRAY_COLUMNS:
+                set_clauses.append(f"{k} = %s::text[]")
+                values.append(v if isinstance(v, list) else [v])
             else:
                 set_clauses.append(f"{k} = %s")
                 values.append(v)
@@ -206,6 +210,7 @@ class Database:
         change_description: str | None = None,
         triggered_by: Any = None,
         conclusion_type: str = "descriptive",
+        category: str = "",
     ) -> None:
         existing = self.get_conclusion(id)
         if existing:
@@ -231,15 +236,15 @@ class Database:
                 )
                 self.execute(
                     "UPDATE conclusions SET statement = %s, domain = %s, "
-                    "confidence = %s, embedding = %s::vector, conclusion_type = %s WHERE id = %s",
-                    (statement, domain, confidence, embedding, conclusion_type, id),
+                    "confidence = %s, embedding = %s::vector, conclusion_type = %s, category = %s WHERE id = %s",
+                    (statement, domain, confidence, embedding, conclusion_type, category, id),
                 )
         else:
             self.execute(
                 "INSERT INTO conclusions "
-                "(id, statement, domain, confidence, embedding, conclusion_type) "
-                "VALUES (%s, %s, %s, %s, %s::vector, %s)",
-                (id, statement, domain, confidence, embedding, conclusion_type),
+                "(id, statement, domain, confidence, embedding, conclusion_type, category) "
+                "VALUES (%s, %s, %s, %s, %s::vector, %s, %s)",
+                (id, statement, domain, confidence, embedding, conclusion_type, category),
             )
             self.execute(
                 "INSERT INTO conclusion_versions "
@@ -306,7 +311,6 @@ class Database:
         latest = versions[-1]
         triggered = latest.get("triggered_by") or []
         if isinstance(triggered, str):
-            import json
             triggered = json.loads(triggered) if triggered else []
         triggered.append({"item_id": item_id[:12]})
         self.execute(

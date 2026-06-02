@@ -235,6 +235,14 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
                     domains_seen[d] = domains_seen.get(d, 0) + 1
             domain = max(domains_seen, key=domains_seen.get) if domains_seen else ""
 
+            # Determine category from related items
+            categories_seen: dict[str, int] = {}
+            for item in related_items:
+                c = item.get("category", "")
+                if c:
+                    categories_seen[c] = categories_seen.get(c, 0) + 1
+            category = max(categories_seen, key=categories_seen.get) if categories_seen else ""
+
             # Compute embedding as mean of related item embeddings
             item_embs = [item["embedding"] for item in related_items if item.get("embedding") is not None]
             if item_embs:
@@ -290,6 +298,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
                 change_description=desc,
                 triggered_by=[{"item_id": item["id"][:12]} for item in related_items],
                 conclusion_type=ctype,
+                category=category,
             )
 
             if action == "update":

@@ -77,6 +77,7 @@ def get_graph(cross_domain_threshold: float = 0.4):
             "type": "conclusion",
             "label": c["statement"][:80],
             "domain": c.get("domain"),
+            "category": c.get("category", ""),
             "confidence": c.get("confidence"),
             "user_confirmation": c.get("user_confirmation"),
             "conclusion_type": c.get("conclusion_type", "descriptive"),
@@ -243,6 +244,21 @@ def get_predictions(status: str = Query("all")):
     return db.get_all_predictions(filter_status=status)
 
 
+@app.post("/api/predictions/{prediction_id}/verify")
+def verify_prediction(
+    prediction_id: str,
+    result: str = Query(...),
+    reason: str = Query(""),
+):
+    if result not in ("correct", "incorrect", "partially_correct", "unverifiable"):
+        return {"error": "result must be correct, incorrect, partially_correct, or unverifiable"}, 400
+    if not _db_ok():
+        return {"error": "database unavailable"}, 503
+    db = get_db()
+    db.update_prediction_result(prediction_id, result, reason)
+    return {"status": "ok"}
+
+
 @app.get("/api/runs")
 def get_runs():
     if not _db_ok():
@@ -267,6 +283,19 @@ def get_domains():
     preset = set(config.domains)
     from_llm = [d for d in domain_names if d not in preset]
     return {"active": domain_names, "configured": config.domains, "from_llm": from_llm}
+
+
+@app.get("/api/categories")
+def get_categories():
+    if not _db_ok():
+        return []
+    db = get_db()
+    rows = db._query(
+        "SELECT category, COUNT(*) as cnt FROM items "
+        "WHERE status IN ('assessed', 'incorporated') AND category IS NOT NULL AND category != '' "
+        "GROUP BY category ORDER BY cnt DESC"
+    )
+    return [{"name": r["category"], "count": r["cnt"]} for r in rows]
 
 
 @app.get("/api/health")

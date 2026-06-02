@@ -2,7 +2,8 @@
 const state = {
   conclusions: [],
   domains: [],
-  domainFilter: null,
+  categories: [],
+  categoryFilter: null,
   sortBy: 'created_at',
   surpriseItems: [],
   predictions: [],
@@ -53,15 +54,17 @@ function loadDashboard() {
     fetch('/api/surprise?limit=20').then(r => r.json()).catch(() => []),
     fetch('/api/predictions?status=all').then(r => r.json()).catch(() => []),
     fetch('/api/health').then(r => r.json()).catch(() => ({ status: 'error', message: 'connection failed' })),
-  ]).then(([graphData, surpriseData, predictionsData, healthData]) => {
+    fetch('/api/categories').then(r => r.json()).catch(() => []),
+  ]).then(([graphData, surpriseData, predictionsData, healthData, categoriesData]) => {
     state.conclusions = graphData.nodes || [];
     state.domains = graphData.domains || [];
+    state.categories = categoriesData || [];
     state.surpriseItems = surpriseData || [];
     state.predictions = predictionsData || [];
     state.health = healthData;
 
     renderStats();
-    renderDomainFilter();
+    renderCategoryFilter();
     renderConclusionCards();
     renderSidePanel();
   });
@@ -90,29 +93,39 @@ function renderStats() {
   ).join('');
 }
 
-function renderDomainFilter() {
+function renderCategoryFilter() {
   const counts = {};
   state.conclusions.forEach(n => {
-    const d = n.domain || 'unknown';
-    counts[d] = (counts[d] || 0) + 1;
+    const c = n.category || '未分类';
+    counts[c] = (counts[c] || 0) + 1;
   });
 
-  const allActive = !state.domainFilter;
-  let html = `<span class="domain-filter-label">Domain:</span>`;
-  html += `<span class="domain-pill${allActive ? ' active' : ''}" data-domain="">All<span class="pill-count">${state.conclusions.length}</span></span>`;
+  const allActive = !state.categoryFilter;
+  let html = `<span class="domain-filter-label">Category:</span>`;
+  html += `<span class="domain-pill${allActive ? ' active' : ''}" data-category="">All<span class="pill-count">${state.conclusions.length}</span></span>`;
 
-  Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([domain, count]) => {
-    const active = state.domainFilter === domain;
-    html += `<span class="domain-pill${active ? ' active' : ''}" data-domain="${escapeHtml(domain)}">${escapeHtml(domain)}<span class="pill-count">${count}</span></span>`;
+  const order = ['人工智能', '科技与安全', '国际与地缘', '能源与气候', '经济与产业', '社会与治理'];
+  const sorted = Object.entries(counts).sort((a, b) => {
+    const ia = order.indexOf(a[0]);
+    const ib = order.indexOf(b[0]);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return b[1] - a[1];
+  });
+
+  sorted.forEach(([category, count]) => {
+    const active = state.categoryFilter === category;
+    html += `<span class="domain-pill${active ? ' active' : ''}" data-category="${escapeHtml(category)}">${escapeHtml(category)}<span class="pill-count">${count}</span></span>`;
   });
 
   document.getElementById('domain-filter').innerHTML = html;
 
   document.querySelectorAll('#domain-filter .domain-pill').forEach(pill => {
     pill.addEventListener('click', () => {
-      const d = pill.dataset.domain;
-      state.domainFilter = d || null;
-      renderDomainFilter();
+      const c = pill.dataset.category;
+      state.categoryFilter = c || null;
+      renderCategoryFilter();
       renderConclusionCards();
     });
   });
@@ -121,8 +134,8 @@ function renderDomainFilter() {
 function renderConclusionCards() {
   let nodes = [...state.conclusions];
 
-  if (state.domainFilter) {
-    nodes = nodes.filter(n => (n.domain || 'unknown') === state.domainFilter);
+  if (state.categoryFilter) {
+    nodes = nodes.filter(n => (n.category || '未分类') === state.categoryFilter);
   }
 
   if (state.sortBy === 'created_at') {
@@ -167,15 +180,24 @@ function renderCard(node) {
   const confColor = confidenceColor(node.confidence || 0);
   const statusClass = conclusionTypeClass(node);
   const statusLabel = conclusionTypeLabel(node.conclusion_type || 'descriptive');
-  const domainLabel = node.domain || 'unknown';
+  const domainLabel = node.domain || '';
   const domainColor = getDomainColor(domainLabel);
+  const categoryLabel = node.category || '';
   const timeAgo = formatTimeAgo(node.created_at);
   const versionInfo = node.version_count > 1 ? ` · v${node.version_count}` : '';
+
+  let domainHtml = '';
+  if (categoryLabel) {
+    domainHtml += `<span class="card-domain-tag" style="border-color:#888;color:#aaa;font-size:10px;">${escapeHtml(categoryLabel)}</span>`;
+  }
+  if (domainLabel) {
+    domainHtml += `<span class="card-domain-tag" style="border-color:${domainColor};color:${domainColor};">${escapeHtml(domainLabel)}</span>`;
+  }
 
   return `<div class="conclusion-card ${statusClass}" data-id="${escapeHtml(node.id)}">
     <div class="card-statement">${escapeHtml(node.label)}</div>
     <div class="card-meta">
-      <span class="card-domain-tag" style="border-color:${domainColor};color:${domainColor};">${escapeHtml(domainLabel)}</span>
+      ${domainHtml}
       <span class="card-confidence">
         <span class="confidence-bar"><span class="confidence-fill" style="width:${confPct}%;background:${confColor};"></span></span>
         ${confPct}%
@@ -440,25 +462,41 @@ function loadPredictions() {
     .then(r => r.json())
     .then(data => {
       const now = new Date();
-      const pending = (data || []).filter(p => !p.backtest_result && p.deadline);
+      const active = (data || []).filter(p => !p.backtest_result && p.deadline && new Date(p.deadline) > now);
+      const needsVerify = (data || []).filter(p => !p.backtest_result && p.deadline && new Date(p.deadline) <= now);
       const verified = (data || []).filter(p => p.backtest_result);
 
-      // Pending with countdown
+      // Active with countdown
       const pBody = document.getElementById('pending-body');
-      if (pending.length === 0) {
-        pBody.innerHTML = '<tr><td colspan="3" style="color:#888;">No pending predictions.</td></tr>';
+      if (active.length === 0) {
+        pBody.innerHTML = '<tr><td colspan="3" style="color:#888;">No active predictions.</td></tr>';
       } else {
-        pBody.innerHTML = pending.map(p => {
+        pBody.innerHTML = active.map(p => {
           const deadline = new Date(p.deadline);
           const daysRemaining = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
-          const countdown = daysRemaining > 0
-            ? `${daysRemaining} days`
-            : daysRemaining === 0 ? 'Today' : 'Overdue';
-          const cdClass = daysRemaining <= 0 ? 'countdown' : '';
           return `<tr>
             <td>${p.statement}</td>
             <td>${p.deadline}</td>
-            <td class="${cdClass}">${countdown}</td>
+            <td>${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      // Needs Verification
+      const nBody = document.getElementById('needs-verify-body');
+      if (needsVerify.length === 0) {
+        nBody.innerHTML = '<tr><td colspan="3" style="color:#888;">All caught up.</td></tr>';
+      } else {
+        nBody.innerHTML = needsVerify.map(p => {
+          return `<tr id="pred-row-${p.id}">
+            <td>${p.statement}</td>
+            <td><span class="countdown">${p.deadline}</span></td>
+            <td>
+              <button class="verify-btn" data-id="${p.id}" data-result="correct" style="color:#4caf50;">Correct</button>
+              <button class="verify-btn" data-id="${p.id}" data-result="partially_correct" style="color:#ffc107;">Partially</button>
+              <button class="verify-btn" data-id="${p.id}" data-result="incorrect" style="color:#f44336;">Incorrect</button>
+              <button class="verify-btn" data-id="${p.id}" data-result="unverifiable" style="color:#888;">Unverifiable</button>
+            </td>
           </tr>`;
         }).join('');
       }
@@ -466,7 +504,7 @@ function loadPredictions() {
       // Verified
       const vBody = document.getElementById('verified-body');
       if (verified.length === 0) {
-        vBody.innerHTML = '<tr><td colspan="3" style="color:#888;">No verified predictions yet. Predictions need time to accumulate.</td></tr>';
+        vBody.innerHTML = '<tr><td colspan="3" style="color:#888;">No verified predictions yet.</td></tr>';
       } else {
         vBody.innerHTML = verified.map(p => {
           const resultClass = `result-${p.backtest_result}`;
@@ -477,6 +515,33 @@ function loadPredictions() {
           </tr>`;
         }).join('');
       }
+
+      // Attach verify button handlers
+      document.querySelectorAll('.verify-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const predId = btn.dataset.id;
+          const result = btn.dataset.result;
+          const row = document.getElementById('pred-row-' + predId);
+          btn.disabled = true;
+          btn.textContent = '...';
+          fetch(`/api/predictions/${predId}/verify?result=${result}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(resp => {
+              if (resp.status === 'ok') {
+                if (row) row.remove();
+                showToast('Prediction verified as ' + result.replace(/_/g, ' '), 'success');
+              } else {
+                btn.disabled = false;
+                btn.textContent = result;
+                showToast(resp.error || 'Verification failed', 'error');
+              }
+            })
+            .catch(() => {
+              btn.disabled = false;
+              btn.textContent = result;
+            });
+        });
+      });
     });
 }
 
