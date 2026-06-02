@@ -8,7 +8,7 @@ from hermes.db import Database
 
 
 TEST_DSN = os.environ.get(
-    "HERMES_TEST_DB", "postgresql://lumen:lumen@localhost:5432/hermes_test"
+    "HERMES_TEST_DB", "postgresql:///hermes_test"
 )
 
 _TABLES = [
