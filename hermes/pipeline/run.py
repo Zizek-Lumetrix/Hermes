@@ -307,7 +307,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
     t0 = time.monotonic()
     pending = db.get_pending_predictions()
     if pending:
-        backtest_results = backtest_predictions(pending, client)
+        backtest_results = backtest_predictions(pending, client, confirmation_stats=stats)
         for result in backtest_results:
             db.update_prediction_result(result["id"], result["result"], result["reason"])
     elapsed = int((time.monotonic() - t0) * 1000)
