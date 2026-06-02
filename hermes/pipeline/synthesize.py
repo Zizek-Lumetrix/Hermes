@@ -107,6 +107,7 @@ def synthesize_items(
     client,
     min_score: float = 0.5,
     min_items: int = 3,
+    feedback_context: str | None = None,
 ) -> dict | None:
     qualified = [
         i for i in items
@@ -147,7 +148,11 @@ def synthesize_items(
 
     prompt = _SYNTHESIZE_PROMPT.format(domain_list=domain_list)
 
-    user_msg = prompt + "\n\n---\n" + "\n---\n".join(summaries)
+    parts = [prompt]
+    if feedback_context:
+        parts.append(feedback_context)
+    parts.append("---\n" + "\n---\n".join(summaries))
+    user_msg = "\n\n".join(parts)
 
     try:
         response = client.chat.completions.create(

@@ -271,6 +271,22 @@ class Database:
             (status,),
         )
 
+    def get_confirmation_stats(self) -> dict:
+        """Return confirmation statistics for predictive conclusions."""
+        rows = self._query(
+            "SELECT user_confirmation, COUNT(*) as cnt "
+            "FROM conclusions "
+            "WHERE status = 'active' AND conclusion_type = 'predictive' "
+            "GROUP BY user_confirmation"
+        )
+        stats = {"confirmed": 0, "challenged": 0, "unmarked": 0}
+        for r in rows:
+            key = r["user_confirmation"] or "unmarked"
+            if key in stats:
+                stats[key] = r["cnt"]
+        stats["total"] = sum(stats.values())
+        return stats
+
     def get_active_conclusions_with_embeddings(self) -> list[dict]:
         """Return active conclusions that have embeddings (for cross-run matching)."""
         return self._query(

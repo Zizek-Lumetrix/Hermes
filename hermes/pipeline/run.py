@@ -188,7 +188,19 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
 
     # Stage 5: Synthesize
     t0 = time.monotonic()
-    synthesis = synthesize_items(assessed, config.domains, client, min_score=0.3)
+    stats = db.get_confirmation_stats()
+    feedback = None
+    if stats["total"] > 0:
+        confirmed_pct = stats["confirmed"] / stats["total"] * 100
+        feedback = (
+            f"历史反馈提醒：你之前提出了 {stats['total']} 条预测性结论，"
+            f"其中 {stats['confirmed']} 条已被确认（{confirmed_pct:.0f}%），"
+            f"{stats['challenged']} 条被质疑。"
+            f"{stats['unmarked']} 条尚未审核。"
+            f"请参考这些反馈来调整你的判断尺度——如果准确率较低，请更严格地判断什么是可验证的预测。"
+        )
+    synthesis = synthesize_items(assessed, config.domains, client, min_score=0.3,
+                                  feedback_context=feedback)
     if synthesis:
         # Load existing conclusions for cross-run matching
         existing_conclusions = db.get_active_conclusions_with_embeddings()
