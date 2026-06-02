@@ -16,13 +16,76 @@ header h1 { font-size: 18px; font-weight: 600; }
 .tab-btn:hover:not(.active) { color: #ccc; }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+
+/* -- Dashboard -- */
+#tab-dashboard.tab-content.active { display: flex; flex-direction: column; height: calc(100vh - 120px); }
+.stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 14px 24px; border-bottom: 1px solid #2a2a2a; }
+.stat-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; }
+.stat-card.attention { border-color: #ff9800; }
+.stat-card.warning { border-color: #f44336; }
+.stat-value { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.stat-sub { font-size: 12px; color: #888; margin-top: 1px; }
+.stat-label { font-size: 11px; color: #666; margin-top: 4px; }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 24px; border-bottom: 1px solid #2a2a2a; gap: 12px; flex-wrap: wrap; }
+.domain-filter { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.domain-filter-label { font-size: 11px; color: #666; margin-right: 2px; }
+.domain-pill { padding: 3px 12px; border-radius: 14px; border: 1px solid #333; background: #1a1a1a; color: #aaa; font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.domain-pill.active { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+.domain-pill:hover:not(.active) { border-color: #555; color: #ddd; }
+.domain-pill .pill-count { color: #555; font-size: 11px; margin-left: 3px; }
+.domain-pill.active .pill-count { color: #4caf50; }
+
+.sort-controls { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+.sort-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 12px; padding: 3px 8px; border-radius: 3px; transition: all 0.15s; }
+.sort-btn.active { color: #4caf50; }
+.sort-btn:hover:not(.active) { color: #ccc; background: #1a1a1a; }
+
+.main-content { display: grid; grid-template-columns: 1fr 300px; flex: 1; overflow: hidden; min-height: 0; }
+.conclusion-list { overflow-y: auto; padding: 12px 24px; }
+.conclusion-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 14px 16px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; border-left: 4px solid #444; }
+.conclusion-card:hover { border-color: #666; background: #1c1c1c; }
+.conclusion-card.confirmed { border-left-color: #4caf50; }
+.conclusion-card.challenged { border-left-color: #f44336; }
+.conclusion-card.unmarked { border-left-color: #ff9800; }
+.conclusion-card.evaluative { border-left-color: #2196f3; }
+.conclusion-card.descriptive { border-left-color: #444; }
+.card-type-tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; }
+.card-type-tag.confirmed { background: #1a3a1a; color: #4caf50; }
+.card-type-tag.challenged { background: #2a1a1a; color: #f44336; }
+.card-type-tag.unmarked { background: #332200; color: #ff9800; }
+.card-type-tag.evaluative { background: #1a2a3a; color: #64b5f6; }
+.card-type-tag.descriptive { background: #1a1a1a; color: #666; }
+.card-statement { font-size: 14px; line-height: 1.5; margin-bottom: 8px; color: #e0e0e0; }
+.card-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 11px; color: #888; }
+.card-domain-tag { display: inline-block; padding: 1px 8px; border-radius: 8px; font-size: 11px; background: #222; border: 1px solid #333; }
+.card-confidence { display: flex; align-items: center; gap: 5px; }
+.confidence-bar { width: 50px; height: 4px; background: #2a2a2a; border-radius: 2px; overflow: hidden; }
+.confidence-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.card-version { color: #555; }
+.card-time { color: #555; margin-left: auto; }
+.empty-state { padding: 60px 0; text-align: center; color: #666; font-size: 14px; }
+.loading { text-align: center; color: #666; padding: 40px 0; font-size: 14px; }
+
+.side-panel { border-left: 1px solid #2a2a2a; padding: 14px; overflow-y: auto; background: #141414; }
+.side-section { margin-bottom: 18px; }
+.side-section h3 { font-size: 10px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+.side-item { padding: 8px 10px; background: #1a1a1a; border-radius: 5px; margin-bottom: 5px; font-size: 12px; border: 1px solid #222; }
+.side-item .si-title { line-height: 1.4; margin-bottom: 3px; }
+.side-item .si-meta { font-size: 11px; color: #666; }
+.side-stat { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+.side-stat .ss-val { font-weight: 600; }
+.health-ok { color: #4caf50; }
+.health-err { color: #f44336; }
+
+/* -- Graph -- */
 #graph-container { width: 100%; height: calc(100vh - 120px); border-bottom: 1px solid #2a2a2a; position: relative; }
-	#graph-legend { position: absolute; top: 10px; right: 16px; background: rgba(20,20,20,0.9); border: 1px solid #333; border-radius: 8px; padding: 12px 16px; font-size: 12px; z-index: 10; }
-	#graph-legend .legend-item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
-	#graph-legend .legend-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-.surprise-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 16px; margin: 12px 24px; border-left: 4px solid #ff9800; }
-.surprise-card .score { font-size: 20px; font-weight: bold; color: #ff9800; float: right; }
-.panel { padding: 0 24px 24px; max-height: 40vh; overflow-y: auto; }
+#graph-legend { position: absolute; top: 10px; right: 16px; background: rgba(20,20,20,0.9); border: 1px solid #333; border-radius: 8px; padding: 12px 16px; font-size: 12px; z-index: 10; }
+#graph-legend .legend-item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+#graph-legend .legend-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+/* -- Predictions & Activity -- */
+.panel { padding: 0 24px 24px; max-height: calc(100vh - 120px); overflow-y: auto; }
 .panel table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .panel th, .panel td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #1a1a1a; }
 .panel th { color: #888; font-weight: 500; }
@@ -30,6 +93,8 @@ header h1 { font-size: 18px; font-weight: 600; }
 .result-correct { color: #4caf50; }
 .result-incorrect { color: #f44336; }
 .result-pending { color: #888; font-style: italic; }
+
+/* -- Drawer -- */
 #drawer { position: fixed; right: 0; top: 0; width: 520px; max-width: 100vw; height: 100vh; background: #1a1a1a; border-left: 1px solid #2a2a2a; padding: 24px; overflow-y: auto; display: none; z-index: 100; }
 #drawer.open { display: block; }
 #drawer-close { background: none; border: none; color: #e0e0e0; font-size: 20px; cursor: pointer; float: right; }
@@ -65,22 +130,35 @@ line.cross_domain { stroke: #ff9800; stroke-opacity: 0.7; }
 </head>
 <body>
 <header>
-  <h1>Hermes Knowledge Graph</h1>
+  <h1>Hermes</h1>
 </header>
 
 <div class="tabs">
-  <button class="tab-btn active" data-tab="graph">Knowledge Graph</button>
-  <button class="tab-btn" data-tab="surprise">Surprise</button>
+  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+  <button class="tab-btn" data-tab="graph">Graph</button>
   <button class="tab-btn" data-tab="predictions">Predictions</button>
   <button class="tab-btn" data-tab="stream">Activity</button>
 </div>
 
-<div id="tab-graph" class="tab-content active">
-  <div id="graph-container"></div>
+<div id="tab-dashboard" class="tab-content active">
+  <div class="stats-bar" id="stats-bar"></div>
+  <div class="toolbar">
+    <div class="domain-filter" id="domain-filter"><span class="loading" style="padding:0;"></span></div>
+    <div class="sort-controls">
+      <span style="color:#666;font-size:11px;margin-right:4px;">Sort:</span>
+      <button class="sort-btn active" data-sort="created_at">Latest</button>
+      <button class="sort-btn" data-sort="confidence">Confidence</button>
+      <button class="sort-btn" data-sort="confirmation">Status</button>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="conclusion-list" id="conclusion-list"><div class="loading">Loading...</div></div>
+    <div class="side-panel" id="side-panel"><div class="loading">Loading...</div></div>
+  </div>
 </div>
 
-<div id="tab-surprise" class="tab-content">
-  <div class="panel" id="surprise-panel"></div>
+<div id="tab-graph" class="tab-content">
+  <div id="graph-container"></div>
 </div>
 
 <div id="tab-predictions" class="tab-content">

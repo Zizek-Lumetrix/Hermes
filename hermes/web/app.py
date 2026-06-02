@@ -79,6 +79,7 @@ def get_graph(cross_domain_threshold: float = 0.4):
             "domain": c.get("domain"),
             "confidence": c.get("confidence"),
             "user_confirmation": c.get("user_confirmation"),
+            "conclusion_type": c.get("conclusion_type", "descriptive"),
             "status": c.get("status"),
             "version_count": len(versions),
             "created_at": str(c.get("created_at", "")),

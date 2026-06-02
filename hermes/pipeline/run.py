@@ -265,6 +265,10 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
             if counter:
                 desc = desc + "\n\n反对意见: " + counter
 
+            ctype = theme.get("conclusion_type", "descriptive")
+            if ctype not in ("predictive", "evaluative", "descriptive"):
+                ctype = "descriptive"
+
             db.upsert_conclusion(
                 id=conclusion_id,
                 statement=theme.get("title", ""),
@@ -273,6 +277,7 @@ def run(config_path: str | None = None, trigger_type: str = "manual") -> None:
                 embedding=mean_emb,
                 change_description=desc,
                 triggered_by=[{"item_id": item["id"][:12]} for item in related_items],
+                conclusion_type=ctype,
             )
 
             if action == "update":

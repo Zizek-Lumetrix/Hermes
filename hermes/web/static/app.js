@@ -1,3 +1,236 @@
+// == State ==
+const state = {
+  conclusions: [],
+  domains: [],
+  domainFilter: null,
+  sortBy: 'created_at',
+  surpriseItems: [],
+  predictions: [],
+  health: null,
+};
+
+const DOMAIN_COLORS = {
+  'AI编程工具': '#4caf50',
+  '大模型安全': '#2196f3',
+  '网络安全': '#00bcd4',
+  '科技产业': '#e91e63',
+  '中东局势': '#f44336',
+  '能源安全': '#ff9800',
+  '气候环境': '#8bc34a',
+  '经济金融': '#ffc107',
+  '地缘政治': '#9c27b0',
+};
+
+// == Utilities ==
+function formatTimeAgo(ts) {
+  if (!ts) return '';
+  const diffMs = new Date() - new Date(ts);
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay > 30) return Math.floor(diffDay / 30) + 'mo ago';
+  if (diffDay > 0) return diffDay + 'd ago';
+  if (diffHr > 0) return diffHr + 'h ago';
+  if (diffMin > 0) return diffMin + 'm ago';
+  return 'just now';
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function confidenceColor(val) {
+  if (val >= 0.7) return '#4caf50';
+  if (val >= 0.5) return '#ff9800';
+  return '#f44336';
+}
+
+// == Dashboard ==
+function loadDashboard() {
+  Promise.all([
+    fetch('/api/graph').then(r => r.json()).catch(() => ({ nodes: [], edges: [], domains: [] })),
+    fetch('/api/surprise?limit=20').then(r => r.json()).catch(() => []),
+    fetch('/api/predictions?status=all').then(r => r.json()).catch(() => []),
+    fetch('/api/health').then(r => r.json()).catch(() => ({ status: 'error', message: 'connection failed' })),
+  ]).then(([graphData, surpriseData, predictionsData, healthData]) => {
+    state.conclusions = graphData.nodes || [];
+    state.domains = graphData.domains || [];
+    state.surpriseItems = surpriseData || [];
+    state.predictions = predictionsData || [];
+    state.health = healthData;
+
+    renderStats();
+    renderDomainFilter();
+    renderConclusionCards();
+    renderSidePanel();
+  });
+}
+
+function renderStats() {
+  const nodes = state.conclusions;
+  const total = nodes.length;
+  const reviewable = nodes.filter(n => (n.conclusion_type || 'descriptive') === 'predictive');
+  const unmarked = reviewable.filter(n => !n.user_confirmation).length;
+  const confirmed = reviewable.filter(n => n.user_confirmation === 'confirmed').length;
+  const challenged = reviewable.filter(n => n.user_confirmation === 'challenged').length;
+  const avgConf = total > 0 ? nodes.reduce((s, n) => s + (n.confidence || 0), 0) / total : 0;
+  const healthOk = state.health && state.health.status === 'ok';
+
+  const cards = [
+    { value: total, sub: `${confirmed} confirmed, ${challenged} challenged`, label: 'Total Conclusions', cls: '' },
+    { value: unmarked, sub: `${reviewable.length} predictive`, label: 'Needs Review', cls: unmarked > 0 ? 'attention' : '' },
+    { value: confirmed, sub: `${(total > 0 ? confirmed / total * 100 : 0).toFixed(0)}% of total`, label: 'Confirmed', cls: '' },
+    { value: (avgConf * 100).toFixed(0) + '%', sub: `${nodes.filter(n => n.confidence >= 0.7).length} high-confidence`, label: 'Avg Confidence', cls: '' },
+    { value: healthOk ? 'OK' : 'ERR', sub: state.health ? (state.health.message || '') : 'checking...', label: 'Pipeline Health', cls: healthOk ? '' : 'warning' },
+  ];
+
+  document.getElementById('stats-bar').innerHTML = cards.map(c =>
+    `<div class="stat-card ${c.cls}"><span class="stat-value">${c.value}</span><span class="stat-sub">${c.sub}</span><span class="stat-label">${c.label}</span></div>`
+  ).join('');
+}
+
+function renderDomainFilter() {
+  const counts = {};
+  state.conclusions.forEach(n => {
+    const d = n.domain || 'unknown';
+    counts[d] = (counts[d] || 0) + 1;
+  });
+
+  const allActive = !state.domainFilter;
+  let html = `<span class="domain-filter-label">Domain:</span>`;
+  html += `<span class="domain-pill${allActive ? ' active' : ''}" data-domain="">All<span class="pill-count">${state.conclusions.length}</span></span>`;
+
+  Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([domain, count]) => {
+    const active = state.domainFilter === domain;
+    html += `<span class="domain-pill${active ? ' active' : ''}" data-domain="${escapeHtml(domain)}">${escapeHtml(domain)}<span class="pill-count">${count}</span></span>`;
+  });
+
+  document.getElementById('domain-filter').innerHTML = html;
+
+  document.querySelectorAll('#domain-filter .domain-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const d = pill.dataset.domain;
+      state.domainFilter = d || null;
+      renderDomainFilter();
+      renderConclusionCards();
+    });
+  });
+}
+
+function renderConclusionCards() {
+  let nodes = [...state.conclusions];
+
+  if (state.domainFilter) {
+    nodes = nodes.filter(n => (n.domain || 'unknown') === state.domainFilter);
+  }
+
+  if (state.sortBy === 'created_at') {
+    nodes.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  } else if (state.sortBy === 'confidence') {
+    nodes.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  } else if (state.sortBy === 'confirmation') {
+    const order = { undefined: 0, null: 0, challenged: 1, confirmed: 2 };
+    nodes.sort((a, b) => (order[a.user_confirmation] ?? 0) - (order[b.user_confirmation] ?? 0));
+  }
+
+  const container = document.getElementById('conclusion-list');
+  if (nodes.length === 0) {
+    container.innerHTML = '<div class="empty-state">No conclusions match the current filter.</div>';
+    return;
+  }
+  container.innerHTML = nodes.map(n => renderCard(n)).join('');
+
+  container.querySelectorAll('.conclusion-card').forEach(card => {
+    card.addEventListener('click', () => openDrawer(card.dataset.id));
+  });
+}
+
+function conclusionTypeLabel(ctype) {
+  if (ctype === 'predictive') return '预测';
+  if (ctype === 'evaluative') return '评估';
+  return '描述';
+}
+
+function conclusionTypeClass(node) {
+  const ctype = node.conclusion_type || 'descriptive';
+  if (ctype === 'predictive') {
+    if (node.user_confirmation === 'confirmed') return 'confirmed';
+    if (node.user_confirmation === 'challenged') return 'challenged';
+    return 'unmarked';
+  }
+  return ctype; // 'descriptive' or 'evaluative'
+}
+
+function renderCard(node) {
+  const confPct = ((node.confidence || 0) * 100).toFixed(0);
+  const confColor = confidenceColor(node.confidence || 0);
+  const statusClass = conclusionTypeClass(node);
+  const statusLabel = conclusionTypeLabel(node.conclusion_type || 'descriptive');
+  const domainLabel = node.domain || 'unknown';
+  const domainColor = DOMAIN_COLORS[domainLabel] || '#666';
+  const timeAgo = formatTimeAgo(node.created_at);
+  const versionInfo = node.version_count > 1 ? ` · v${node.version_count}` : '';
+
+  return `<div class="conclusion-card ${statusClass}" data-id="${escapeHtml(node.id)}">
+    <div class="card-statement">${escapeHtml(node.label)}</div>
+    <div class="card-meta">
+      <span class="card-domain-tag" style="border-color:${domainColor};color:${domainColor};">${escapeHtml(domainLabel)}</span>
+      <span class="card-confidence">
+        <span class="confidence-bar"><span class="confidence-fill" style="width:${confPct}%;background:${confColor};"></span></span>
+        ${confPct}%
+      </span>
+      <span class="card-type-tag ${statusClass}">${statusLabel}</span>
+      <span class="card-version">${versionInfo}</span>
+      <span class="card-time">${timeAgo}</span>
+    </div>
+  </div>`;
+}
+
+function renderSidePanel() {
+  const healthOk = state.health && state.health.status === 'ok';
+  const topSurprises = state.surpriseItems.slice(0, 5);
+  const pendingPreds = state.predictions.filter(p => !p.backtest_result && p.deadline);
+  const verifiedPreds = state.predictions.filter(p => p.backtest_result);
+
+  let html = '';
+
+  // Pipeline status
+  html += `<div class="side-section"><h3>Pipeline</h3>`;
+  html += `<div class="side-stat"><span>Health</span><span class="ss-val ${healthOk ? 'health-ok' : 'health-err'}">${healthOk ? 'OK' : 'Error'}</span></div>`;
+  html += `<div class="side-stat"><span>Conclusions</span><span class="ss-val">${state.conclusions.length}</span></div>`;
+  html += `<div class="side-stat"><span>Domains</span><span class="ss-val">${state.domains.length}</span></div>`;
+  html += `</div>`;
+
+  // Top surprises
+  html += `<div class="side-section"><h3>Top Surprises</h3>`;
+  if (topSurprises.length === 0) {
+    html += `<div class="side-item"><div class="si-title">No high-surprise items yet.</div></div>`;
+  } else {
+    topSurprises.forEach(item => {
+      const analysis = safeJson(item.analysis) || {};
+      const pct = ((item.surprise_score || 0) * 100).toFixed(0);
+      html += `<div class="side-item"><div class="si-title">${escapeHtml((analysis.title_cn || item.title || '').slice(0, 60))}</div><div class="si-meta">surprise ${pct}% · ${escapeHtml(item.domain || '')}</div></div>`;
+    });
+  }
+  html += `</div>`;
+
+  // Prediction summary
+  html += `<div class="side-section"><h3>Predictions</h3>`;
+  html += `<div class="side-stat"><span>Pending</span><span class="ss-val">${pendingPreds.length}</span></div>`;
+  html += `<div class="side-stat"><span>Verified</span><span class="ss-val">${verifiedPreds.length}</span></div>`;
+  const correct = verifiedPreds.filter(p => p.backtest_result === 'correct').length;
+  if (verifiedPreds.length > 0) {
+    html += `<div class="side-stat"><span>Accuracy</span><span class="ss-val">${(correct / verifiedPreds.length * 100).toFixed(0)}%</span></div>`;
+  }
+  html += `</div>`;
+
+  document.getElementById('side-panel').innerHTML = html;
+}
+
 // -- Tab switching --
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -5,10 +238,20 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'graph') loadGraph();
-    else if (btn.dataset.tab === 'surprise') loadSurprise();
+    if (btn.dataset.tab === 'dashboard') loadDashboard();
+    else if (btn.dataset.tab === 'graph') loadGraph();
     else if (btn.dataset.tab === 'predictions') loadPredictions();
     else if (btn.dataset.tab === 'stream') loadStream();
+  });
+});
+
+// -- Sort buttons --
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.sortBy = btn.dataset.sort;
+    renderConclusionCards();
   });
 });
 
@@ -194,35 +437,6 @@ function loadGraph() {
     });
 }
 
-// -- Surprise Tab --
-function loadSurprise() {
-  fetch('/api/surprise?limit=20')
-    .then(r => r.json())
-    .then(data => {
-      const panel = document.getElementById('surprise-panel');
-      if (!data || data.length === 0) {
-        panel.innerHTML = '<p style="color:#888;padding:24px;">No high-surprise items yet. Run the pipeline to discover unexpected intelligence.</p>';
-        return;
-      }
-      panel.innerHTML = data.map(item => {
-        const analysis = safeJson(item.analysis) || {};
-        const surprisePct = (item.surprise_score * 100).toFixed(0);
-        const domainBadge = item.domain ? `<span class="source-tag" style="margin-left:4px;background:#2a1a1a;color:#f44336;">${item.domain}</span>` : '';
-        const proposedBadge = item.domain_proposed ? `<span class="source-tag" style="margin-left:4px;background:#332200;color:#ff9800;" title="提议的新领域">提议: ${item.domain_proposed}</span>` : '';
-        return `<div class="surprise-card">
-          <span class="score">${surprisePct}%</span>
-          <strong>${analysis.title_cn || item.title}</strong>
-          <span class="source-tag" style="margin-left:8px;">${item.source}</span>
-          ${domainBadge}${proposedBadge}
-          <div class="analysis-section">${(analysis.summary || '').slice(0, 200)}</div>
-          ${analysis.key_points && analysis.key_points.length ? `<div class="analysis-section"><strong>关键点:</strong><ul>${analysis.key_points.map(kp => `<li>${kp}</li>`).join('')}</ul></div>` : ''}
-          ${analysis.implications ? `<div class="analysis-section"><strong>启示:</strong> ${analysis.implications}</div>` : ''}
-          ${item.url ? `<div style="margin-top:4px;"><a href="${item.url}" target="_blank" class="source-url">${item.title}</a></div>` : ''}
-        </div>`;
-      }).join('');
-    });
-}
-
 // -- Predictions Tab --
 function loadPredictions() {
   fetch('/api/predictions?status=all')
@@ -289,13 +503,6 @@ function loadStream() {
         </div>`;
       }).join('');
     });
-}
-
-// -- Confidence color --
-function confidenceColor(val) {
-  if (val >= 0.7) return '#4caf50';
-  if (val >= 0.5) return '#ff9800';
-  return '#f44336';
 }
 
 // -- Evidence Drawer --
@@ -417,12 +624,22 @@ function renderEvidence(conclusionData) {
     });
   }
 
-  const isConfirmed = confirmStatus === 'confirmed';
-  const isChallenged = confirmStatus === 'challenged';
-  html += `<div style="margin-top:20px;display:flex;gap:8px;" id="confirm-buttons">
-    <button class="confirm-btn${isConfirmed ? ' confirmed-active' : ''}" id="btn-confirm" onclick="confirmConclusion('${c.id}', 'confirmed')">${isConfirmed ? '✓ 已确认' : '确认 ✓'}</button>
-    <button class="confirm-btn challenge${isChallenged ? ' challenged-active' : ''}" id="btn-challenge" onclick="confirmConclusion('${c.id}', 'challenged')">${isChallenged ? '✗ 已质疑' : '质疑 ✗'}</button>
-  </div>`;
+  const ctype = c.conclusion_type || 'descriptive';
+  if (ctype === 'predictive') {
+    const isConfirmed = confirmStatus === 'confirmed';
+    const isChallenged = confirmStatus === 'challenged';
+    html += `<div style="margin-top:20px;display:flex;gap:8px;" id="confirm-buttons">
+      <button class="confirm-btn${isConfirmed ? ' confirmed-active' : ''}" id="btn-confirm" onclick="confirmConclusion('${c.id}', 'confirmed')">${isConfirmed ? '✓ 已确认' : '确认 ✓'}</button>
+      <button class="confirm-btn challenge${isChallenged ? ' challenged-active' : ''}" id="btn-challenge" onclick="confirmConclusion('${c.id}', 'challenged')">${isChallenged ? '✗ 已质疑' : '质疑 ✗'}</button>
+    </div>`;
+  } else if (ctype === 'evaluative') {
+    const isUseful = confirmStatus === 'confirmed';
+    const isDisagree = confirmStatus === 'challenged';
+    html += `<div style="margin-top:20px;display:flex;gap:8px;" id="confirm-buttons">
+      <button class="confirm-btn${isUseful ? ' confirmed-active' : ''}" id="btn-confirm" onclick="confirmConclusion('${c.id}', 'confirmed')">${isUseful ? '✓ 有用' : '有用 ✓'}</button>
+      <button class="confirm-btn challenge${isDisagree ? ' challenged-active' : ''}" id="btn-challenge" onclick="confirmConclusion('${c.id}', 'challenged')">${isDisagree ? '✗ 不认同' : '不认同 ✗'}</button>
+    </div>`;
+  }
 
   return html;
 }
@@ -446,7 +663,6 @@ function openDrawer(nodeId) {
 function confirmConclusion(id, value) {
   const btnConfirm = document.getElementById('btn-confirm');
   const btnChallenge = document.getElementById('btn-challenge');
-  const clickedBtn = value === 'confirmed' ? btnConfirm : btnChallenge;
   const label = value === 'confirmed' ? '确认' : '质疑';
 
   if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.textContent = value === 'confirmed' ? '保存中...' : btnConfirm.textContent; }
@@ -461,10 +677,19 @@ function confirmConclusion(id, value) {
       if (data.status === 'ok') {
         // Update graph node data and re-style
         if (graphNodeData) {
-          const node = graphNodeData.find(n => n.id === id);
-          if (node) node.user_confirmation = value;
+          const gnode = graphNodeData.find(n => n.id === id);
+          if (gnode) gnode.user_confirmation = value;
         }
         updateGraphNodeStyles();
+
+        // Update dashboard state and re-render
+        if (state.conclusions.length > 0) {
+          const dnode = state.conclusions.find(n => n.id === id);
+          if (dnode) dnode.user_confirmation = value;
+          renderStats();
+          renderConclusionCards();
+        }
+
         showToast(label + '已保存', 'success');
         openDrawer(id);
       } else {
@@ -482,5 +707,5 @@ document.getElementById('drawer-close').addEventListener('click', () => {
   document.getElementById('drawer').classList.remove('open');
 });
 
-// Initial load: graph tab is active
-loadGraph();
+// -- Initial load --
+loadDashboard();

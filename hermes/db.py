@@ -201,6 +201,7 @@ class Database:
         embedding: list[float],
         change_description: str | None = None,
         triggered_by: Any = None,
+        conclusion_type: str = "descriptive",
     ) -> None:
         existing = self.get_conclusion(id)
         if existing:
@@ -226,15 +227,15 @@ class Database:
                 )
                 self.execute(
                     "UPDATE conclusions SET statement = %s, domain = %s, "
-                    "confidence = %s, embedding = %s::vector WHERE id = %s",
-                    (statement, domain, confidence, embedding, id),
+                    "confidence = %s, embedding = %s::vector, conclusion_type = %s WHERE id = %s",
+                    (statement, domain, confidence, embedding, conclusion_type, id),
                 )
         else:
             self.execute(
                 "INSERT INTO conclusions "
-                "(id, statement, domain, confidence, embedding) "
-                "VALUES (%s, %s, %s, %s, %s::vector)",
-                (id, statement, domain, confidence, embedding),
+                "(id, statement, domain, confidence, embedding, conclusion_type) "
+                "VALUES (%s, %s, %s, %s, %s::vector, %s)",
+                (id, statement, domain, confidence, embedding, conclusion_type),
             )
             self.execute(
                 "INSERT INTO conclusion_versions "

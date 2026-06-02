@@ -3,6 +3,14 @@
 以下是通过向量聚类自动发现的内容群组。请解释这些群组为什么存在：它们代表什么主题？条目之间有什么逻辑关联？请同时对每个主题输出反对意见——不支持该主题的证据、可能推翻该结论的反面论据。
 
 输出严格 JSON 格式（不含代码块标记）：
-{{"themes": [{{"title": "<主题名称>", "summary": "<100字主题概述>", "related_item_ids": ["<条目ID前缀>"], "significance": "<对该领域的意义>", "counter_evidence": "<不支持该主题的反面证据，包括矛盾的信源、不一致的数据点、或可能的替代解释。如果确实没有反面证据，说明'当前无明确反对意见'>"}}], "connections": [{{"from_theme": 0, "to_theme": 1, "relationship": "因果关系|并列发展|对立矛盾|支撑佐证", "description": "<一句话关联描述>"}}], "overall_narrative": "<200字全局脉络>"}}
+{{"themes": [{{"title": "<主题名称>", "conclusion_type": "predictive|evaluative|descriptive", "summary": "<100字主题概述>", "related_item_ids": ["<条目ID前缀>"], "significance": "<对该领域的意义>", "counter_evidence": "<不支持该主题的反面证据，包括矛盾的信源、不一致的数据点、或可能的替代解释。如果确实没有反面证据，说明'当前无明确反对意见'>"}}], "connections": [{{"from_theme": 0, "to_theme": 1, "relationship": "因果关系|并列发展|对立矛盾|支撑佐证", "description": "<一句话关联描述>"}}], "overall_narrative": "<200字全局脉络>"}}
+
+conclusion_type 分类标准：
+- predictive：声称未来会发生什么，或断言某个因果关系成立。核心特征是"可被未来事实证伪"。
+  示例：「AI编程工具将导致初级开发者需求下降30%」「Rust将在两年内取代C在嵌入式领域的地位」
+- evaluative：对某事物做价值判断、风险评级或影响评估。核心特征是"基于标准和判断，但不是非真即假"。
+  示例：「开源AI模型的安全性被系统性低估」「某国的芯片管制政策是有效的」
+- descriptive：总结现状、归类和描述趋势。核心特征是"就事论事，不包含未来预测和价值立场"。
+  示例：「全球AI采用差异与地理空间分析显示欧美领先」「2025年大模型安全漏洞主要来自提示注入」
 
 要求：themes 至少1个，每个至少关联1条条目。每条条目只归属一个主题。counter_evidence 是必填字段，必须认真思考不支持该结论的证据。
